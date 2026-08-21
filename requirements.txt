@@ -1,0 +1,6 @@
+torch
+streamlit
+pandas
+scikit-learn
+fastparquet
+pytest
