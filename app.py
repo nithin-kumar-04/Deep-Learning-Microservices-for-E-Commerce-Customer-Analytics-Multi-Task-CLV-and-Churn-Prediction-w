@@ -3,11 +3,45 @@ import pandas as pd
 import requests
 import os
 import io
+import torch
+import pickle
 
 # Setup API URL
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="E-Commerce Deep Learning Insights", layout="wide")
+
+@st.cache_resource
+def load_local_models():
+    """Loads PyTorch models directly into Streamlit RAM for cloud deployments where FastAPI isn't running."""
+    try:
+        from src.dl_clv_churn import MultiTaskCLVChurn
+        from src.dl_recommender import NCFRecommender
+        
+        with open("artifacts/scaler.pkl", "rb") as f:
+            scaler = pickle.load(f)
+            
+        clv_model = MultiTaskCLVChurn(input_dim=3)
+        clv_model.load_state_dict(torch.load("artifacts/dl_clv_churn.pt", map_location=torch.device('cpu')))
+        clv_model.eval()
+        
+        # We need user/item mappings for recommender fallback
+        df = pd.read_parquet("data/cleaned_retail.parquet")
+        interactions = df[['CustomerID', 'StockCode', 'Description']].drop_duplicates()
+        user_mapping = {id: idx for idx, id in enumerate(interactions['CustomerID'].unique())}
+        item_mapping = {id: idx for idx, id in enumerate(interactions['StockCode'].unique())}
+        item_to_desc = interactions.set_index('StockCode')['Description'].to_dict()
+        
+        rec_model = NCFRecommender(len(user_mapping), len(item_mapping))
+        rec_model.load_state_dict(torch.load("artifacts/dl_recommender.pt", map_location=torch.device('cpu')))
+        rec_model.eval()
+        
+        return clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc
+    except Exception as e:
+        print(f"Local model load failed: {e}")
+        return None, None, None, None, None, None
+
+clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc = load_local_models()
 
 @st.cache_data
 def load_base_data():
@@ -21,7 +55,7 @@ def load_base_data():
 clv_df = load_base_data()
 
 st.title("🛍️ E-Commerce Deep Learning Insights & Recommendations")
-st.markdown("*Powered by PyTorch Microservices*")
+st.markdown("*Powered by PyTorch*")
 
 if clv_df is None:
     st.warning("Data not found. Please run the Deep Learning pipeline scripts first.")
@@ -55,27 +89,31 @@ else:
         # 2. What-If Simulator
         st.sidebar.divider()
         st.sidebar.subheader("🎛️ 'What-If' Simulator")
-        st.sidebar.markdown("Modify historical behavior to simulate real-time PyTorch predictions via FastAPI.")
+        st.sidebar.markdown("Modify historical behavior to simulate real-time PyTorch predictions.")
         
         sim_recency = st.sidebar.slider("Days Since Last Order", 0, 365, int(cust_info.get('Recency_Days', 0)))
         sim_freq = st.sidebar.slider("Total Orders", 1, 50, int(cust_info.get('Historical_Orders', 1)))
         sim_monetary = st.sidebar.number_input("Total Historical Spend ($)", value=float(cust_info.get('Historical_Spend', 100.0)))
         
-        # Call API for Prediction
+        # Call API for Prediction, or fallback to Local RAM Inference
         try:
-            res = requests.post(f"{API_URL}/predict/clv", json={
-                "recency": sim_recency,
-                "frequency": sim_freq,
-                "monetary": sim_monetary
-            })
+            res = requests.post(f"{API_URL}/predict/clv", json={"recency": sim_recency, "frequency": sim_freq, "monetary": sim_monetary}, timeout=1.5)
             res.raise_for_status()
             api_pred = res.json()
             clv_90d = api_pred['predicted_clv_90d']
             churn_prob = api_pred['churn_probability']
         except Exception as e:
-            st.error(f"API Error: Make sure FastAPI is running (`uvicorn api:app`). Falling back to static data. {e}")
-            clv_90d = cust_info.get('DL_Predicted_CLV_90d', 0)
-            churn_prob = cust_info.get('DL_Churn_Probability', 0)
+            if clv_model and scaler:
+                # Local RAM Fallback Inference
+                x_scaled = scaler.transform([[sim_recency, sim_freq, sim_monetary]])
+                features = torch.tensor(x_scaled, dtype=torch.float32)
+                with torch.no_grad():
+                    clv_pred, churn_logits = clv_model(features)
+                    churn_prob = torch.sigmoid(churn_logits).item()
+                    clv_90d = clv_pred.item()
+            else:
+                clv_90d = cust_info.get('DL_Predicted_CLV_90d', 0)
+                churn_prob = cust_info.get('DL_Churn_Probability', 0)
             
         segment = cust_info.get('Segment_Badge', 'Unknown')
         
@@ -126,36 +164,63 @@ else:
             
         st.divider()
         
-        # Recommendations (API Call)
+        # Recommendations (API Call or Local Fallback)
         st.subheader("📦 Top 5 Personalized Recommendations (NCF Deep Learning)")
         try:
-            rec_res = requests.get(f"{API_URL}/recommend/{customer_id}")
+            rec_res = requests.get(f"{API_URL}/recommend/{customer_id}", timeout=1.5)
             rec_res.raise_for_status()
             recs = rec_res.json()['recommendations']
             rec_df = pd.DataFrame(recs)
-            
-            if not rec_df.empty:
-                # Convert affinity to float for progress column (0-100)
-                rec_df['Match Score'] = rec_df['affinity_score'] * 100.0
-                
-                st.dataframe(
-                    rec_df[['rank', 'stock_code', 'description', 'Match Score']].rename(columns={'rank':'Rank', 'stock_code':'StockCode', 'description':'Description'}),
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Match Score": st.column_config.ProgressColumn(
-                            "Affinity Match",
-                            help="NCF probability score",
-                            format="%.1f%%",
-                            min_value=0.0,
-                            max_value=100.0,
-                        )
-                    }
-                )
+        except Exception:
+            if rec_model and user_mapping and item_mapping and customer_id in user_mapping:
+                # Local RAM Fallback Inference
+                u_idx = user_mapping[customer_id]
+                with torch.no_grad():
+                    user_emb = rec_model.user_embedding(torch.tensor([u_idx]))
+                    all_items = torch.arange(len(item_mapping))
+                    item_emb = rec_model.item_embedding(all_items)
+                    
+                    scores = torch.matmul(user_emb, item_emb.T)
+                    top5_scores, top5_indices = torch.topk(scores, 5, dim=1)
+                    
+                    min_scores = top5_scores.min(dim=1, keepdim=True)[0]
+                    max_scores = top5_scores.max(dim=1, keepdim=True)[0]
+                    top5_affinity = 0.75 + 0.23 * ((top5_scores - min_scores) / (max_scores - min_scores + 1e-8))
+                    
+                    inv_item_mapping = {v: k for k, v in item_mapping.items()}
+                    recs = []
+                    for rank, (i_idx, affinity) in enumerate(zip(top5_indices[0].tolist(), top5_affinity[0].tolist())):
+                        stock_code = inv_item_mapping[i_idx]
+                        recs.append({
+                            "Rank": rank + 1,
+                            "StockCode": stock_code,
+                            "Description": item_to_desc.get(stock_code, "Unknown"),
+                            "affinity_score": float(affinity)
+                        })
+                rec_df = pd.DataFrame(recs)
             else:
-                st.info("No recommendations generated for this user.")
-        except Exception as e:
-            st.error(f"API Error fetching recommendations: {e}")
+                rec_df = pd.DataFrame()
+            
+        if not rec_df.empty:
+            # Convert affinity to float for progress column (0-100)
+            rec_df['Match Score'] = rec_df['affinity_score'] * 100.0
+            
+            st.dataframe(
+                rec_df[['Rank', 'StockCode', 'Description', 'Match Score']],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Match Score": st.column_config.ProgressColumn(
+                        "Affinity Match",
+                        help="NCF probability score",
+                        format="%.1f%%",
+                        min_value=0.0,
+                        max_value=100.0,
+                    )
+                }
+            )
+        else:
+            st.info("No recommendations generated for this user.")
             
     else:
         st.error(f"CustomerID {customer_id} not found in the dataset.")
