@@ -13,6 +13,24 @@ provider "aws" {
 }
 
 # -----------------------------------------------------
+# 0. SSH Key Generation
+# -----------------------------------------------------
+resource "tls_private_key" "pk" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "kp" {
+  key_name   = "ecommerce-key"
+  public_key = tls_private_key.pk.public_key_openssh
+}
+
+resource "local_file" "pem_file" {
+  filename        = "${path.module}/ecommerce-key.pem"
+  content         = tls_private_key.pk.private_key_pem
+}
+
+# -----------------------------------------------------
 # 1. AWS IAM Role for EC2
 # -----------------------------------------------------
 resource "aws_iam_role" "ec2_role" {
@@ -40,6 +58,7 @@ resource "aws_iam_role_policy_attachment" "ssm_policy" {
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "ecommerce_ml_ec2_profile"
   role = aws_iam_role.ec2_role.name
+  depends_on = [aws_iam_role_policy_attachment.ssm_policy]
 }
 
 # -----------------------------------------------------
@@ -93,6 +112,9 @@ resource "aws_instance" "ml_api" {
 
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
   vpc_security_group_ids = [aws_security_group.api_sg.id]
+  key_name               = aws_key_pair.kp.key_name
+
+  depends_on = [aws_iam_instance_profile.ec2_profile]
 
   user_data = <<-EOF
               #!/bin/bash
