@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import torch
 import pandas as pd
@@ -6,12 +7,22 @@ import numpy as np
 import pickle
 import io
 import os
+import boto3
 
 # Import model architectures
 from src.dl_clv_churn import MultiTaskCLVChurn
 from src.dl_recommender import NCFRecommender
 
 app = FastAPI(title="E-Commerce ML API", version="1.0")
+
+# Enable CORS for Next.js frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # For production, replace with the AWS Amplify domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Globals for loaded artifacts
 clv_model = None
@@ -21,9 +32,29 @@ user_mapping = None
 item_mapping = None
 item_to_desc = None
 
+def download_from_s3(file_path: str):
+    """Downloads a file from S3 if S3_BUCKET_NAME is set and file doesn't exist."""
+    bucket_name = os.environ.get("S3_BUCKET_NAME")
+    if bucket_name and not os.path.exists(file_path):
+        print(f"Downloading {file_path} from S3 bucket {bucket_name}...")
+        s3 = boto3.client('s3')
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        try:
+            s3.download_file(bucket_name, file_path, file_path)
+            print(f"Successfully downloaded {file_path}")
+        except Exception as e:
+            print(f"Failed to download {file_path} from S3: {e}")
+
 @app.on_event("startup")
 def load_artifacts():
     global clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc
+    
+    # Check and download artifacts from S3 if needed
+    download_from_s3("artifacts/scaler.pkl")
+    download_from_s3("artifacts/dl_clv_churn.pt")
+    download_from_s3("data/cleaned_retail.parquet")
+    download_from_s3("artifacts/dl_recommender.pt")
     
     # 1. Load Scaler
     if os.path.exists("artifacts/scaler.pkl"):
