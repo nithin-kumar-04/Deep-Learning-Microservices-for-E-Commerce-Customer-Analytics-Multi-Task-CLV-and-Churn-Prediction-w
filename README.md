@@ -8,11 +8,10 @@ A production-ready Deep Learning microservice architecture for real-time custome
 graph LR
     A[Raw Retail Data] --> B[ETL / Feature Pipeline]
     B --> C[PyTorch Model Training]
-    C -->|Weights/Artifacts| D[FastAPI Backend]
+    C -->|Weights/Artifacts| D[FastAPI Backend - AWS EC2]
     
-    subgraph Containerized Microservices
-        D -->|HTTP REST| E[Streamlit UI]
-        E -->|What-If Sim & Batch| D
+    subgraph AWS Cloud Deployment
+        D <-->|REST API| E[Next.js Dashboard - AWS S3]
     end
 ```
 
@@ -25,31 +24,36 @@ graph LR
 * **Architecture**: A PyTorch network with shared hidden layers parsing scaled RFM features. It splits into a Regression head (90-Day Continuous CLV) and a Classification head (Churn Probability).
 
 ## Features
-* **Interactive "What-If" Simulator**: Drag sliders for Recency, Frequency, and Spend to dynamically hit the FastAPI endpoint in real-time and watch the PyTorch predictions instantly update.
+* **Interactive "What-If" Simulator**: Modify sliders for Recency, Frequency, and Spend to dynamically hit the FastAPI endpoint in real-time and watch the PyTorch predictions instantly update on the Next.js dashboard.
 * **Explainable AI (XAI)**: View heuristic feature attributions explaining *why* a customer is highly likely to churn.
 * **Batch Processing**: Upload large `.csv` files for instantaneous batch scoring via the API.
-* **Docker Support**: Instantly orchestrate the backend API and frontend Streamlit apps using `docker-compose`.
+* **Cloud Infrastructure**: Seamlessly orchestrate the backend API on AWS EC2 and frontend Next.js apps using AWS S3 via Terraform.
 
 ## Deployment
 
-### Docker (Recommended)
-You can launch the entire stack using Docker:
+### AWS / Terraform (Recommended)
+You can launch the entire stack using Terraform:
 ```bash
-docker-compose up --build
+cd terraform
+terraform init
+terraform apply -auto-approve
 ```
-- **Streamlit App**: http://localhost:8501
-- **FastAPI Docs**: http://localhost:8000/docs
+Then deploy the Next.js frontend to the created S3 bucket:
+```bash
+cd frontend
+npm run build
+aws s3 sync out/ s3://<your-bucket-name>
+```
 
-### Local Environment (uv)
+### Local Environment
 Alternatively, you can run the services locally in separate terminal windows:
 ```bash
-# Setup environment
+# Terminal 1: Launch FastAPI Backend
 uv venv --python 3.11 venv
 uv pip install -r requirements.txt
-
-# Terminal 1: Launch FastAPI Backend
 uvicorn api:app --reload
 
-# Terminal 2: Launch Streamlit Dashboard
-streamlit run app.py
+# Terminal 2: Launch Next.js Dashboard
+cd frontend
+npm run dev
 ```

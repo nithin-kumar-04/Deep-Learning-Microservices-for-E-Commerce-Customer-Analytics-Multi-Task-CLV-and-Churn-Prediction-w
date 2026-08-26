@@ -8,6 +8,7 @@ import pickle
 import io
 import os
 import boto3
+from functools import lru_cache
 
 # Import model architectures
 from src.dl_clv_churn import MultiTaskCLVChurn
@@ -76,24 +77,24 @@ def load_artifacts():
         item_mapping = {id: idx for idx, id in enumerate(interactions['StockCode'].unique())}
         item_to_desc = interactions.set_index('StockCode')['Description'].to_dict()
         
-        # 4. Reconstruct NCF Model
         rec_model = NCFRecommender(len(user_mapping), len(item_mapping))
         if os.path.exists("artifacts/dl_recommender.pt"):
             rec_model.load_state_dict(torch.load("artifacts/dl_recommender.pt", map_location=torch.device('cpu')))
         rec_model.eval()
+
+@app.get("/health")
+def health_check():
+    """Health check for AWS Load Balancer."""
+    return {"status": "healthy"}
 
 class CLVRequest(BaseModel):
     recency: float
     frequency: float
     monetary: float
 
-@app.post("/predict/clv")
-def predict_clv(req: CLVRequest):
-    """Predicts Churn Probability and 90-Day CLV for a single user's RFM inputs."""
-    if scaler is None or clv_model is None:
-        raise HTTPException(status_code=500, detail="Model artifacts not loaded.")
-        
-    x_scaled = scaler.transform([[req.recency, req.frequency, req.monetary]])
+@lru_cache(maxsize=1024)
+def _predict_clv_cached(recency: float, frequency: float, monetary: float):
+    x_scaled = scaler.transform([[recency, frequency, monetary]])
     features = torch.tensor(x_scaled, dtype=torch.float32)
     
     with torch.no_grad():
@@ -106,15 +107,16 @@ def predict_clv(req: CLVRequest):
         "predicted_clv_90d": float(clv)
     }
 
-@app.get("/recommend/{customer_id}")
-def recommend(customer_id: int):
-    """Returns top 5 NCF recommendations for a customer."""
-    if rec_model is None or user_mapping is None:
-        raise HTTPException(status_code=500, detail="Recommender model not loaded.")
+@app.post("/predict/clv")
+def predict_clv(req: CLVRequest):
+    """Predicts Churn Probability and 90-Day CLV for a single user's RFM inputs."""
+    if scaler is None or clv_model is None:
+        raise HTTPException(status_code=500, detail="Model artifacts not loaded.")
         
-    if customer_id not in user_mapping:
-        raise HTTPException(status_code=404, detail="Customer not found in embedding matrix.")
-        
+    return _predict_clv_cached(req.recency, req.frequency, req.monetary)
+
+@lru_cache(maxsize=1024)
+def _recommend_cached(customer_id: int):
     u_idx = user_mapping[customer_id]
     
     with torch.no_grad():
@@ -143,6 +145,17 @@ def recommend(customer_id: int):
             })
             
     return {"customer_id": customer_id, "recommendations": recs}
+
+@app.get("/recommend/{customer_id}")
+def recommend(customer_id: int):
+    """Returns top 5 NCF recommendations for a customer."""
+    if rec_model is None or user_mapping is None:
+        raise HTTPException(status_code=500, detail="Recommender model not loaded.")
+        
+    if customer_id not in user_mapping:
+        raise HTTPException(status_code=404, detail="Customer not found in embedding matrix.")
+        
+    return _recommend_cached(customer_id)
 
 @app.post("/batch_predict")
 async def batch_predict(file: UploadFile = File(...)):
