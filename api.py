@@ -1,5 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Security, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 import torch
 import pandas as pd
@@ -16,10 +17,22 @@ from src.dl_recommender import NCFRecommender
 
 app = FastAPI(title="E-Commerce ML API", version="1.0")
 
+# Security
+API_KEY = os.environ.get("API_KEY", "default-secret-key")
+api_key_header = APIKeyHeader(name="X-API-Key")
+
+def get_api_key(api_key: str = Security(api_key_header)):
+    if api_key != API_KEY:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Could not validate credentials")
+    return api_key
+
 # Enable CORS for Next.js frontend
+allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000")
+origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # For production, replace with the AWS Amplify domain
+    allow_origins=origins, # Configurable via environment variable
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -108,7 +121,7 @@ def _predict_clv_cached(recency: float, frequency: float, monetary: float):
     }
 
 @app.post("/predict/clv")
-def predict_clv(req: CLVRequest):
+def predict_clv(req: CLVRequest, api_key: str = Depends(get_api_key)):
     """Predicts Churn Probability and 90-Day CLV for a single user's RFM inputs."""
     if scaler is None or clv_model is None:
         raise HTTPException(status_code=500, detail="Model artifacts not loaded.")
@@ -147,7 +160,7 @@ def _recommend_cached(customer_id: int):
     return {"customer_id": customer_id, "recommendations": recs}
 
 @app.get("/recommend/{customer_id}")
-def recommend(customer_id: int):
+def recommend(customer_id: int, api_key: str = Depends(get_api_key)):
     """Returns top 5 NCF recommendations for a customer."""
     if rec_model is None or user_mapping is None:
         raise HTTPException(status_code=500, detail="Recommender model not loaded.")
@@ -158,9 +171,18 @@ def recommend(customer_id: int):
     return _recommend_cached(customer_id)
 
 @app.post("/batch_predict")
-async def batch_predict(file: UploadFile = File(...)):
+async def batch_predict(file: UploadFile = File(...), api_key: str = Depends(get_api_key)):
     """Processes a CSV of Customer RFM features and returns predictions."""
     contents = await file.read()
+    
+    # Security: File size limit checking
+    MAX_FILE_SIZE = 5 * 1024 * 1024 # 5 MB
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 5MB.")
+        
+    # Security Warning: scaler.pkl is loaded using pickle.load() at startup. 
+    # Ensure the S3 bucket is tightly access-controlled, as pickle deserialization 
+    # can execute arbitrary code if the file is tampered with.
     df = pd.read_csv(io.StringIO(contents.decode('utf-8')))
     
     required_cols = ['CustomerID', 'Recency', 'Frequency', 'Monetary']

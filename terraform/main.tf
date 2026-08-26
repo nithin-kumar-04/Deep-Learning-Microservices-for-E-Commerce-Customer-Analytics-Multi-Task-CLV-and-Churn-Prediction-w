@@ -13,22 +13,9 @@ provider "aws" {
 }
 
 # -----------------------------------------------------
-# 0. SSH Key Generation
+# 0. SSH Key Generation (Removed)
 # -----------------------------------------------------
-resource "tls_private_key" "pk" {
-  algorithm = "RSA"
-  rsa_bits  = 4096
-}
-
-resource "aws_key_pair" "kp" {
-  key_name   = "ecommerce-key"
-  public_key = tls_private_key.pk.public_key_openssh
-}
-
-resource "local_file" "pem_file" {
-  filename        = "${path.module}/../ecommerce-confidential/ecommerce-key.pem"
-  content         = tls_private_key.pk.private_key_pem
-}
+# Using AWS Systems Manager (SSM) instead of SSH for instance access
 
 # -----------------------------------------------------
 # 1. AWS IAM Role for EC2
@@ -76,13 +63,7 @@ resource "aws_security_group" "api_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  ingress {
-    description = "SSH"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+
 
   egress {
     from_port   = 0
@@ -112,7 +93,6 @@ resource "aws_instance" "ml_api" {
 
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
   vpc_security_group_ids = [aws_security_group.api_sg.id]
-  key_name               = aws_key_pair.kp.key_name
 
   depends_on = [aws_iam_instance_profile.ec2_profile]
 
