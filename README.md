@@ -32,7 +32,7 @@ graph LR
 ## Live Deployment
 
 🚀 **The Next.js Frontend is currently live at:**
-[http://ecommerce-frontend-e82c3453.s3.us-east-1.amazonaws.com](http://ecommerce-frontend-e82c3453.s3.us-east-1.amazonaws.com)
+[http://ecommerce-frontend-e82c3453.s3-website-us-east-1.amazonaws.com](http://ecommerce-frontend-e82c3453.s3-website-us-east-1.amazonaws.com)
 
 🚀 **The FastAPI Backend is currently running on AWS EC2 at:**
 `http://100.30.233.15:8000`
