@@ -29,10 +29,18 @@ graph LR
 * **Batch Processing**: Upload large `.csv` files for instantaneous batch scoring via the API.
 * **Cloud Infrastructure**: Seamlessly orchestrate the backend API on AWS EC2 and frontend Next.js apps using AWS S3 via Terraform.
 
-## Deployment
+## Live Deployment
 
-### AWS / Terraform (Recommended)
-You can launch the entire stack using Terraform:
+🚀 **The Next.js Frontend is currently live at:**
+[http://ecommerce-frontend-e82c3453.s3.us-east-1.amazonaws.com](http://ecommerce-frontend-e82c3453.s3.us-east-1.amazonaws.com)
+
+🚀 **The FastAPI Backend is currently running on AWS EC2 at:**
+`http://100.30.233.15:8000`
+
+## Deployment Guides
+
+### AWS / Terraform
+You can recreate the entire stack using Terraform:
 ```bash
 cd terraform
 terraform init
