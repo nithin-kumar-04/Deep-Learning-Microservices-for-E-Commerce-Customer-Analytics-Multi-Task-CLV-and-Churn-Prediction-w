@@ -26,7 +26,7 @@ resource "aws_key_pair" "kp" {
 }
 
 resource "local_file" "pem_file" {
-  filename        = "${path.module}/ecommerce-key.pem"
+  filename        = "${path.module}/../ecommerce-confidential/ecommerce-key.pem"
   content         = tls_private_key.pk.private_key_pem
 }
 
