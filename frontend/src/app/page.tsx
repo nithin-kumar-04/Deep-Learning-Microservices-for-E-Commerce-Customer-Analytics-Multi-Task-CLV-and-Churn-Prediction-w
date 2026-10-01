@@ -15,12 +15,11 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { predictCLV, getRecommendations, CLVPrediction, Recommendation } from "@/lib/api";
-import { User, Activity, DollarSign, RefreshCw, Upload, AlertTriangle, TrendingUp, CheckCircle, Package, BarChart2, ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
+import { User, Activity, DollarSign, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Dashboard() {
@@ -71,7 +70,7 @@ export default function Dashboard() {
       try {
         const recs = await getRecommendations(Number(customerId));
         setRecommendations(recs.recommendations);
-      } catch (recError) {
+      } catch {
         console.log("No recommendations found for this user (or backend not seeded yet).");
         setRecommendations([]);
       }
