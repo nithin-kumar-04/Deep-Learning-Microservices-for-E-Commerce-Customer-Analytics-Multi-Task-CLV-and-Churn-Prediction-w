@@ -40,6 +40,15 @@ export const getRecommendations = async (customerId: number): Promise<Recommenda
   return response.data;
 };
 
+export const checkHealth = async (): Promise<boolean> => {
+  try {
+    const response = await apiClient.get('/health');
+    return response.status === 200;
+  } catch {
+    return false;
+  }
+};
+
 export const batchPredict = async (file: File): Promise<Blob> => {
   const formData = new FormData();
   formData.append('file', file);
