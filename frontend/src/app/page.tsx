@@ -17,8 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { predictCLV, getRecommendations, CLVPrediction, Recommendation } from "@/lib/api";
-import { User, Activity, DollarSign, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { predictCLV, getRecommendations, checkHealth, CLVPrediction, Recommendation } from "@/lib/api";
+import { User, Activity, PoundSterling, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -35,6 +35,17 @@ export default function Dashboard() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSystemOnline, setIsSystemOnline] = useState<boolean>(true);
+
+  React.useEffect(() => {
+    const pollHealth = async () => {
+      const isOnline = await checkHealth();
+      setIsSystemOnline(isOnline);
+    };
+    pollHealth();
+    const intervalId = setInterval(pollHealth, 30000);
+    return () => clearInterval(intervalId);
+  }, []);
 
   // Mock High-Risk Customers for Demo
   const highRiskCustomers = [
@@ -46,7 +57,7 @@ export default function Dashboard() {
   ];
 
   const exportToCSV = () => {
-    const headers = ["Customer ID,Churn Risk (%),Predicted CLV ($),Recency,Frequency,Status"];
+    const headers = ["Customer ID,Churn Risk (%),Predicted CLV (£),Recency,Frequency,Status"];
     const rows = highRiskCustomers.map(c => 
       `${c.id},${(c.churnRisk * 100).toFixed(1)},${c.clv.toFixed(2)},${c.recency},${c.freq},${c.status}`
     );
@@ -103,7 +114,13 @@ export default function Dashboard() {
             </h1>
           </div>
           <div className="flex items-center gap-4 text-sm font-medium text-muted-foreground">
-            <span className="flex items-center gap-1.5"><Activity className="w-4 h-4 text-green-400" /> System Online</span>
+            <span className="hidden md:inline text-xs border border-border px-2 py-1 rounded-md">
+              Demo data: UCI Online Retail, 2010–2011 (v1.0.0)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Activity className={`w-4 h-4 ${isSystemOnline ? 'text-green-400' : 'text-red-400'}`} /> 
+              {isSystemOnline ? 'System Online' : 'System Offline'}
+            </span>
             <ThemeToggle />
           </div>
         </div>
@@ -213,7 +230,7 @@ export default function Dashboard() {
                       />
                       {/* Purchase History Timeline Mockup */}
                       <div className="pt-2">
-                        <div className="text-xs text-muted-foreground mb-1">Purchase Timeline (Last 365 Days)</div>
+                        <div className="text-xs text-muted-foreground mb-1">Simulated Purchase Timeline (Last 365 Days)</div>
                         <div className="flex gap-1 h-2 w-full rounded overflow-hidden bg-muted">
                           {Array.from({ length: 12 }).map((_, i) => (
                             <div key={i} className={`flex-1 ${((i * 7 + 3) % 50) < frequency ? 'bg-indigo-500' : 'bg-transparent'}`} title={`Month ${12 - i} ago`} />
@@ -224,8 +241,8 @@ export default function Dashboard() {
 
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
-                        <label className="font-medium text-foreground">Monetary ($)</label>
-                        <span className="text-indigo-400 font-mono">${monetary.toFixed(2)}</span>
+                        <label className="font-medium text-foreground">Monetary (£)</label>
+                        <span className="text-indigo-400 font-mono">£{monetary.toFixed(2)}</span>
                       </div>
                       <Input 
                         type="number" 
@@ -242,7 +259,7 @@ export default function Dashboard() {
                       disabled={loading}
                       className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-lg shadow-indigo-500/25 transition-all"
                     >
-                      {loading ? "Running Models..." : "Generate AI Insights"}
+                      {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Running Models...</> : "Generate AI Insights"}
                     </Button>
                   </CardFooter>
                 </Card>
@@ -268,12 +285,12 @@ export default function Dashboard() {
                         Predicted 90-Day CLV
                       </CardDescription>
                       <CardTitle className="text-4xl font-light text-foreground flex items-center gap-2">
-                        <DollarSign className="w-8 h-8 text-indigo-500" />
-                        {prediction ? prediction.predicted_clv_90d.toFixed(2) : "0.00"}
+                        <PoundSterling className="w-8 h-8 text-indigo-500" />
+                        {prediction ? prediction.predicted_clv_90d.toFixed(2) : "—"}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-sm text-foreground0">
+                      <p className="text-sm text-muted-foreground">
                         Projected value over the next quarter based on deep learning forecasting.
                       </p>
                     </CardContent>
@@ -288,8 +305,8 @@ export default function Dashboard() {
                         {prediction && getChurnBadge(prediction.churn_probability)}
                       </CardDescription>
                       <CardTitle className="text-4xl font-light text-foreground flex items-end gap-1">
-                        {prediction ? (prediction.churn_probability * 100).toFixed(1) : "0.0"}
-                        <span className="text-xl text-foreground0 mb-1">%</span>
+                        {prediction ? (prediction.churn_probability * 100).toFixed(1) : "—"}
+                        <span className="text-xl text-muted-foreground mb-1">%</span>
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
@@ -325,7 +342,7 @@ export default function Dashboard() {
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <BarChart2 className="w-5 h-5 text-indigo-400" />
-                      Behavioral Metrics vs Cohort Average
+                      Behavioral Metrics vs Demo Cohort Average
                     </CardTitle>
                     <CardDescription className="text-muted-foreground">
                       Visualizing current RFM inputs relative to standard segment baselines.
@@ -396,7 +413,7 @@ export default function Dashboard() {
                         </Table>
                       </div>
                     ) : (
-                      <div className="h-40 flex flex-col items-center justify-center border border-dashed border-border rounded-lg text-foreground0">
+                      <div className="h-40 flex flex-col items-center justify-center border border-dashed border-border rounded-lg text-muted-foreground">
                         <Package className="w-8 h-8 mb-2 opacity-50" />
                         <p className="text-sm">No recommendations generated.</p>
                         <p className="text-xs">Run a prediction or ensure the user exists in the model.</p>
@@ -468,7 +485,7 @@ export default function Dashboard() {
                             <Progress value={customer.churnRisk * 100} className="w-16 h-1.5 [&>div]:bg-red-500" />
                           </div>
                         </TableCell>
-                        <TableCell className="text-foreground">${customer.clv.toFixed(2)}</TableCell>
+                        <TableCell className="text-foreground">£{customer.clv.toFixed(2)}</TableCell>
                         <TableCell className="text-foreground">{customer.recency} days</TableCell>
                         <TableCell className="text-foreground">{customer.freq} orders</TableCell>
                         <TableCell className="text-right">
