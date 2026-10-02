@@ -65,6 +65,11 @@ export const getRecommendations = async (customerId: number): Promise<Recommenda
   return response.data;
 };
 
+export const getCustomerRFM = async (customerId: string): Promise<{recency: number, frequency: number, monetary: number}> => {
+  const response = await apiClient.get(`/customer/${customerId}/rfm`);
+  return response.data;
+};
+
 export const checkHealth = async (): Promise<boolean> => {
   try {
     const response = await apiClient.get('/health');

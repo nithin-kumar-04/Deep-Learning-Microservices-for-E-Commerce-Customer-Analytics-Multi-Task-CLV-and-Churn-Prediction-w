@@ -49,7 +49,7 @@ item_mapping = None
 item_to_desc = None
 background_data = None
 top_at_risk_cache = []
-
+customer_rfm_cache = {}
 def download_from_s3(file_path: str):
     """Downloads a file from S3 if S3_BUCKET_NAME is set and file doesn't exist."""
     bucket_name = os.environ.get("S3_BUCKET_NAME")
@@ -66,7 +66,7 @@ def download_from_s3(file_path: str):
 
 @app.on_event("startup")
 def load_artifacts():
-    global clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc, background_data, top_at_risk_cache
+    global clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc, background_data, top_at_risk_cache, customer_rfm_cache
     
     # Check and download artifacts from S3 if needed
     download_from_s3("artifacts/scaler.pkl")
@@ -130,6 +130,15 @@ def load_artifacts():
             mtl_data['Churn_Risk'] = churn_probs
             mtl_data['Predicted_CLV'] = clv_preds
             mtl_data['CustomerID'] = user_ids
+            
+            customer_rfm_cache.clear()
+            for _, row in mtl_data.iterrows():
+                customer_rfm_cache[str(int(row['CustomerID']))] = {
+                    "recency": float(row['Recency']),
+                    "frequency": float(row['Frequency']),
+                    "monetary": float(row['Monetary'])
+                }
+                
             top_risk = mtl_data.sort_values(by="Churn_Risk", ascending=False).head(50)
             
             top_at_risk_cache.clear()
@@ -316,3 +325,9 @@ async def batch_predict(file: UploadFile = File(...), api_key: str = Depends(get
 def at_risk_customers(api_key: str = Depends(get_api_key)):
     """Returns the precomputed list of top at-risk customers."""
     return top_at_risk_cache
+
+@app.get("/customer/{customer_id}/rfm")
+def get_customer_rfm(customer_id: str, api_key: str = Depends(get_api_key)):
+    if customer_id not in customer_rfm_cache:
+        raise HTTPException(status_code=404, detail="Customer not found in RFM cache")
+    return customer_rfm_cache[customer_id]
