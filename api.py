@@ -50,6 +50,9 @@ item_to_desc = None
 background_data = None
 top_at_risk_cache = []
 customer_rfm_cache = {}
+segment_data_cache = {}
+business_overview_cache = {}
+product_analytics_cache = {}
 def download_from_s3(file_path: str):
     """Downloads a file from S3 if S3_BUCKET_NAME is set and file doesn't exist."""
     bucket_name = os.environ.get("S3_BUCKET_NAME")
@@ -66,7 +69,7 @@ def download_from_s3(file_path: str):
 
 @app.on_event("startup")
 def load_artifacts():
-    global clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc, background_data, top_at_risk_cache, customer_rfm_cache
+    global clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc, background_data, top_at_risk_cache, customer_rfm_cache, segment_data_cache, business_overview_cache, product_analytics_cache
     
     # Check and download artifacts from S3 if needed
     download_from_s3("artifacts/scaler.pkl")
@@ -152,8 +155,83 @@ def load_artifacts():
                     "freq": int(row['Frequency']),
                     "status": status
                 })
+                
+            # FEATURE 1: SEGMENTATION
+            from sklearn.cluster import KMeans
+            # Let's cluster into 4 groups using scaled RFM
+            kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
+            mtl_data['Cluster'] = kmeans.fit_predict(X_full)
+            
+            cluster_means = mtl_data.groupby('Cluster')[['Recency', 'Frequency', 'Monetary']].mean()
+            cluster_scores = cluster_means['Monetary'] * cluster_means['Frequency'] / (cluster_means['Recency'] + 1)
+            sorted_clusters = cluster_scores.sort_values(ascending=False).index.tolist()
+            
+            segment_names = {}
+            if len(sorted_clusters) == 4:
+                segment_names[sorted_clusters[0]] = "Champions"
+                segment_names[sorted_clusters[1]] = "Loyal Customers"
+                segment_names[sorted_clusters[2]] = "At-Risk VIPs"
+                segment_names[sorted_clusters[3]] = "Hibernating"
+            
+            mtl_data['Segment'] = mtl_data['Cluster'].map(segment_names)
+            
+            global segment_data_cache
+            segment_data_cache = {
+                "summary": mtl_data.groupby('Segment').agg(
+                    count=('CustomerID', 'count'),
+                    avg_clv=('Predicted_CLV', 'mean'),
+                    avg_churn=('Churn_Risk', 'mean'),
+                    avg_recency=('Recency', 'mean'),
+                    avg_frequency=('Frequency', 'mean'),
+                    avg_monetary=('Monetary', 'mean')
+                ).reset_index().to_dict(orient='records'),
+                "scatter": mtl_data.sample(min(500, len(mtl_data))).apply(lambda x: {
+                    "id": str(int(x['CustomerID'])),
+                    "recency": float(x['Recency']),
+                    "monetary": float(x['Monetary']),
+                    "frequency": float(x['Frequency']),
+                    "clv": float(x['Predicted_CLV']),
+                    "segment": str(x['Segment'])
+                }, axis=1).tolist()
+            }
+            
+            # FEATURE 2: MACRO BUSINESS FORECASTING
+            global business_overview_cache
+            df['InvoiceDate'] = pd.to_datetime(df['InvoiceDate'])
+            df['Month'] = df['InvoiceDate'].dt.to_period('M').dt.to_timestamp()
+            monthly_revenue = df.groupby('Month')['TotalSales'].sum().reset_index()
+            
+            total_historical = float(monthly_revenue['TotalSales'].sum())
+            total_forecast = float(mtl_data['Predicted_CLV'].sum())
+            
+            business_overview_cache = {
+                "historical_monthly": monthly_revenue.apply(lambda x: {
+                    "date": x['Month'].strftime("%Y-%m"),
+                    "revenue": float(x['TotalSales'])
+                }, axis=1).tolist(),
+                "forecast_90d": total_forecast,
+                "total_historical": total_historical
+            }
+            
+            # FEATURE 3: PRODUCT ANALYTICS
+            global product_analytics_cache
+            top_products = df.groupby(['StockCode', 'Description']).agg(
+                revenue=('TotalSales', 'sum'),
+                quantity=('Quantity', 'sum'),
+                buyers=('CustomerID', 'nunique')
+            ).reset_index().sort_values(by='revenue', ascending=False).head(20)
+            
+            product_analytics_cache = {
+                "top_products": top_products.apply(lambda x: {
+                    "stock_code": str(x['StockCode']),
+                    "description": str(x['Description']),
+                    "revenue": float(x['revenue']),
+                    "quantity": int(x['quantity']),
+                    "buyers": int(x['buyers'])
+                }, axis=1).tolist()
+            }
         except Exception as e:
-            print("Failed to precompute at risk customers:", e)
+            print("Failed to precompute data:", e)
 
 @app.get("/health")
 def health_check():
@@ -331,3 +409,45 @@ def get_customer_rfm(customer_id: str, api_key: str = Depends(get_api_key)):
     if customer_id not in customer_rfm_cache:
         raise HTTPException(status_code=404, detail="Customer not found in RFM cache")
     return customer_rfm_cache[customer_id]
+
+@app.get("/segments")
+def get_segments(api_key: str = Depends(get_api_key)):
+    return segment_data_cache
+
+@app.get("/business_overview")
+def get_business_overview(api_key: str = Depends(get_api_key)):
+    return business_overview_cache
+
+@app.get("/product_analytics")
+def get_product_analytics(api_key: str = Depends(get_api_key)):
+    return product_analytics_cache
+
+@app.post("/generate_email/{customer_id}")
+def generate_email(customer_id: str, api_key: str = Depends(get_api_key)):
+    if customer_id not in customer_rfm_cache:
+        raise HTTPException(status_code=404, detail="Customer not found.")
+    
+    recs = []
+    if int(customer_id) in user_mapping:
+        recs_out = _recommend_cached(int(customer_id))
+        recs = [r['description'] for r in recs_out['recommendations'][:3]]
+        
+    rfm = customer_rfm_cache[customer_id]
+    
+    items_text = "\\n".join([f"- {r}" for r in recs]) if recs else "- 20% off our entire store!"
+    
+    template = f"""Subject: We Miss You! Special Offer Inside 🎁
+
+Hi there! 
+
+It's been {int(rfm['recency'])} days since we last saw you. You've been a great customer, and we want to welcome you back!
+
+Based on your past purchases, we think you'd absolutely love these:
+{items_text}
+
+Use code WINBACK20 for 20% off your next order.
+
+Best,
+The Nexus Analytics Team
+"""
+    return {"email_template": template}
