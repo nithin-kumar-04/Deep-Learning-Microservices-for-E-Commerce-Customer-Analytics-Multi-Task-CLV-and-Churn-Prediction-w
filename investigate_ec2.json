@@ -1,0 +1,11 @@
+{
+  "DocumentName": "AWS-RunShellScript",
+  "InstanceIds": ["i-07a83eafb7efc80f4"],
+  "Parameters": {
+    "commands": [
+      "sudo systemctl status fastapi.service || true",
+      "ps aux | grep -E 'python|uvicorn|fastapi' || true",
+      "ls -la /home/ec2-user/ecommerce-dl-microservices || true"
+    ]
+  }
+}
