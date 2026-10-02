@@ -53,14 +53,17 @@ export default function Dashboard() {
   // Email state
   const [emailTemplate, setEmailTemplate] = useState<string | null>(null);
   const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   const handleGenerateEmail = async () => {
     setEmailLoading(true);
+    setEmailError(null);
     try {
       const res = await generateEmail(customerId);
       setEmailTemplate(res.email_template);
     } catch (e) {
       console.error(e);
+      setEmailError("Failed to generate email. Customer may not exist.");
     } finally {
       setEmailLoading(false);
     }
@@ -140,6 +143,7 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     setEmailTemplate(null);
+    setEmailError(null);
     try {
       const rfm = await getCustomerRFM(cId);
       setRecency(rfm.recency);
@@ -580,6 +584,12 @@ export default function Dashboard() {
                       Draft Win-Back Email
                     </Button>
                     
+                    {emailError && (
+                      <div className="w-full p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm text-center">
+                        {emailError}
+                      </div>
+                    )}
+
                     {emailTemplate && (
                       <div className="w-full p-4 bg-muted rounded-md text-sm whitespace-pre-wrap font-mono text-muted-foreground text-left">
                         {emailTemplate}
