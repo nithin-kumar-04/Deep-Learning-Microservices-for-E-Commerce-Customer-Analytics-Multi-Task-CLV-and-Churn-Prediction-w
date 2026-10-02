@@ -48,6 +48,7 @@ user_mapping = None
 item_mapping = None
 item_to_desc = None
 background_data = None
+top_at_risk_cache = []
 
 def download_from_s3(file_path: str):
     """Downloads a file from S3 if S3_BUCKET_NAME is set and file doesn't exist."""
@@ -65,7 +66,7 @@ def download_from_s3(file_path: str):
 
 @app.on_event("startup")
 def load_artifacts():
-    global clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc, background_data
+    global clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc, background_data, top_at_risk_cache
     
     # Check and download artifacts from S3 if needed
     download_from_s3("artifacts/scaler.pkl")
@@ -115,6 +116,34 @@ def load_artifacts():
         if os.path.exists("artifacts/dl_recommender.pt"):
             rec_model.load_state_dict(torch.load("artifacts/dl_recommender.pt", map_location=torch.device('cpu')))
         rec_model.eval()
+        
+        # Precompute At-Risk Customers
+        try:
+            from src.dl_clv_churn import prepare_mtl_data
+            user_features, X_full, _, _, _, _ = prepare_mtl_data(df)
+            features_full = torch.tensor(X_full, dtype=torch.float32)
+            with torch.no_grad():
+                clv_preds, churn_logits = clv_model(features_full)
+                churn_probs = torch.sigmoid(churn_logits).squeeze().numpy()
+                clv_preds = clv_preds.squeeze().numpy()
+            
+            user_features['Churn_Risk'] = churn_probs
+            user_features['Predicted_CLV'] = clv_preds
+            top_risk = user_features.sort_values(by="Churn_Risk", ascending=False).head(50)
+            
+            top_at_risk_cache.clear()
+            for _, row in top_risk.iterrows():
+                status = "Critical" if row['Churn_Risk'] > 0.8 else ("High Risk" if row['Churn_Risk'] > 0.5 else "Medium Risk")
+                top_at_risk_cache.append({
+                    "id": str(int(row['CustomerID'])),
+                    "churnRisk": float(row['Churn_Risk']),
+                    "clv": float(row['Predicted_CLV']),
+                    "recency": int(row['Recency']),
+                    "freq": int(row['Frequency']),
+                    "status": status
+                })
+        except Exception as e:
+            print("Failed to precompute at risk customers:", e)
 
 @app.get("/health")
 def health_check():
@@ -278,3 +307,7 @@ async def batch_predict(file: UploadFile = File(...), api_key: str = Depends(get
     
     return {"filename": "batch_predictions.csv", "csv_data": stream.getvalue()}
 
+@app.get("/at_risk_customers")
+def at_risk_customers(api_key: str = Depends(get_api_key)):
+    """Returns the precomputed list of top at-risk customers."""
+    return top_at_risk_cache

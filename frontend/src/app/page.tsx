@@ -17,9 +17,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { predictCLV, getRecommendations, checkHealth, CLVPrediction, Recommendation } from "@/lib/api";
+import { predictCLV, explainCLV, getRecommendations, checkHealth, CLVPrediction, CLVExplanation, Recommendation } from "@/lib/api";
 import { User, Activity, PoundSterling, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Dashboard() {
@@ -32,6 +32,7 @@ export default function Dashboard() {
 
   // Predictions State
   const [prediction, setPrediction] = useState<CLVPrediction | null>(null);
+  const [explanation, setExplanation] = useState<CLVExplanation | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +76,12 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      const pred = await predictCLV(recency, frequency, monetary);
+      const [pred, expl] = await Promise.all([
+        predictCLV(recency, frequency, monetary),
+        explainCLV(recency, frequency, monetary)
+      ]);
       setPrediction(pred);
+      setExplanation(expl);
       
       try {
         const recs = await getRecommendations(Number(customerId));
@@ -317,20 +322,48 @@ export default function Dashboard() {
                       <p className="text-sm text-muted-foreground">Probability of account going dormant.</p>
                       
                       {/* XAI: SHAP Explanations */}
-                      {prediction && (
+                      {explanation && (
                         <div className="pt-3 mt-3 border-t border-border">
                           <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
-                            <Activity className="w-3 h-3 text-indigo-400" /> AI Rationale
+                            <Activity className="w-3 h-3 text-indigo-400" /> AI Rationale (SHAP Contributions)
                           </p>
-                          <ul className="text-xs text-muted-foreground space-y-1.5 list-disc pl-4">
-                            {recency > 30 ? (
-                              <li><span className="text-red-400">High Recency</span> ({recency} days) is the primary driver of churn risk.</li>
-                            ) : (
-                              <li><span className="text-green-400">Low Recency</span> ({recency} days) indicates strong recent engagement.</li>
-                            )}
-                            {frequency < 5 && <li>Low Purchase Frequency contributes to instability.</li>}
-                            {monetary < 100 && <li>Low Monetary Value shows weak commitment.</li>}
-                          </ul>
+                          <div className="h-40 w-full mt-4">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart 
+                                layout="vertical" 
+                                data={[
+                                  { name: 'Recency', value: explanation.contributions.Recency },
+                                  { name: 'Frequency', value: explanation.contributions.Frequency },
+                                  { name: 'Monetary', value: explanation.contributions.Monetary },
+                                ]} 
+                                margin={{ top: 5, right: 30, left: 30, bottom: 5 }}
+                              >
+                                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={true} vertical={false} />
+                                <XAxis type="number" stroke="#64748b" fontSize={10} tickFormatter={(val) => `${(val*100).toFixed(0)}%`} />
+                                <YAxis dataKey="name" type="category" stroke="#64748b" fontSize={11} axisLine={false} tickLine={false} />
+                                <RechartsTooltip 
+                                  cursor={{fill: '#1e293b', opacity: 0.4}}
+                                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px' }}
+                                  itemStyle={{ color: '#f8fafc' }}
+                                  formatter={(val: number) => [`${val > 0 ? '+' : ''}${(val * 100).toFixed(1)}%`, 'Effect on Churn Risk']}
+                                />
+                                <Bar dataKey="value" radius={[4, 4, 4, 4]}>
+                                  {
+                                    [
+                                      explanation.contributions.Recency,
+                                      explanation.contributions.Frequency,
+                                      explanation.contributions.Monetary
+                                    ].map((val, index) => (
+                                      <Cell key={`cell-${index}`} fill={val > 0 ? '#ef4444' : '#10b981'} />
+                                    ))
+                                  }
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-2 text-center">
+                            Base value (average customer): <strong>{(explanation.base_value * 100).toFixed(1)}%</strong>
+                          </p>
                         </div>
                       )}
                     </CardContent>

@@ -6,12 +6,23 @@ export const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
+    'X-API-Key': 'default-secret-key'
   },
 });
 
 export interface CLVPrediction {
   churn_probability: number;
   predicted_clv_90d: number;
+}
+
+export interface CLVExplanation {
+  base_value: number;
+  prediction: number;
+  contributions: {
+    Recency: number;
+    Frequency: number;
+    Monetary: number;
+  };
 }
 
 export interface Recommendation {
@@ -28,6 +39,15 @@ export interface RecommendationResponse {
 
 export const predictCLV = async (recency: number, frequency: number, monetary: number): Promise<CLVPrediction> => {
   const response = await apiClient.post('/predict/clv', {
+    recency,
+    frequency,
+    monetary,
+  });
+  return response.data;
+};
+
+export const explainCLV = async (recency: number, frequency: number, monetary: number): Promise<CLVExplanation> => {
+  const response = await apiClient.post('/explain', {
     recency,
     frequency,
     monetary,
