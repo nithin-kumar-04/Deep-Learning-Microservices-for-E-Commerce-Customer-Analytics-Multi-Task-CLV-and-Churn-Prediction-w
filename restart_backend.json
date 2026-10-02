@@ -1,0 +1,9 @@
+{
+  "DocumentName": "AWS-RunShellScript",
+  "InstanceIds": ["i-07a83eafb7efc80f4"],
+  "Parameters": {
+    "commands": [
+      "su - ec2-user -c 'cd /home/ec2-user/ecommerce-dl-microservices && git pull origin main && source venv/bin/activate && pkill -f uvicorn || true && export ALLOWED_ORIGINS=\"http://ecommerce-frontend-e82c3453.s3-website-us-east-1.amazonaws.com,http://localhost:3000\" && nohup uvicorn api:app --host 0.0.0.0 --port 8000 > nohup.out 2>&1 &'"
+    ]
+  }
+}
