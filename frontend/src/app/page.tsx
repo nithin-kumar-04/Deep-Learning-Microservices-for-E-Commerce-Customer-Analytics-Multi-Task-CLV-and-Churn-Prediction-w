@@ -209,7 +209,7 @@ export default function Dashboard() {
               <TrendingUp className="w-4 h-4 text-white" />
             </div>
             <h1 className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
-              Nexus Analytics
+              Zenthiqa
             </h1>
           </div>
           <div className="flex items-center gap-4 text-sm font-medium text-muted-foreground">
