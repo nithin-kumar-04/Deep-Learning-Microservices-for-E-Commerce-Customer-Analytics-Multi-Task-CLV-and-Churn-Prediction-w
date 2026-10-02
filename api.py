@@ -10,6 +10,8 @@ import io
 import os
 import boto3
 from functools import lru_cache
+from itertools import combinations
+from math import factorial
 
 # Import model architectures
 from src.dl_clv_churn import MultiTaskCLVChurn
@@ -45,6 +47,7 @@ scaler = None
 user_mapping = None
 item_mapping = None
 item_to_desc = None
+background_data = None
 
 def download_from_s3(file_path: str):
     """Downloads a file from S3 if S3_BUCKET_NAME is set and file doesn't exist."""
@@ -62,13 +65,14 @@ def download_from_s3(file_path: str):
 
 @app.on_event("startup")
 def load_artifacts():
-    global clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc
+    global clv_model, rec_model, scaler, user_mapping, item_mapping, item_to_desc, background_data
     
     # Check and download artifacts from S3 if needed
     download_from_s3("artifacts/scaler.pkl")
     download_from_s3("artifacts/dl_clv_churn.pt")
     download_from_s3("data/cleaned_retail.parquet")
     download_from_s3("artifacts/dl_recommender.pt")
+    download_from_s3("artifacts/background.npy")
     
     # 1. Load Scaler
     if os.path.exists("artifacts/scaler.pkl"):
@@ -80,6 +84,23 @@ def load_artifacts():
     if os.path.exists("artifacts/dl_clv_churn.pt"):
         clv_model.load_state_dict(torch.load("artifacts/dl_clv_churn.pt", map_location=torch.device('cpu')))
     clv_model.eval()
+    
+    # Load Background Data for Explanations
+    if not os.path.exists("artifacts/background.npy"):
+        try:
+            print("Generating background.npy from training data...")
+            from src.dl_clv_churn import prepare_mtl_data
+            if os.path.exists("data/cleaned_retail.parquet"):
+                df_bg = pd.read_parquet("data/cleaned_retail.parquet")
+                _, X_bg, _, _, _, _ = prepare_mtl_data(df_bg)
+                np.random.seed(42)
+                indices = np.random.choice(len(X_bg), size=min(200, len(X_bg)), replace=False)
+                background_data = X_bg[indices]
+                np.save("artifacts/background.npy", background_data)
+        except Exception as e:
+            print("Failed to generate background.npy:", e)
+    else:
+        background_data = np.load("artifacts/background.npy")
     
     # 3. Read mapping artifacts (from parquet or create a dedicated mapping artifact).
     # For a robust API, we read the cleaned data to reconstruct mappings if they weren't saved separately.
@@ -127,6 +148,58 @@ def predict_clv(req: CLVRequest, api_key: str = Depends(get_api_key)):
         raise HTTPException(status_code=500, detail="Model artifacts not loaded.")
         
     return _predict_clv_cached(req.recency, req.frequency, req.monetary)
+
+def shapley_exact(predict_fn, x, background):
+    """x: (3,) scaled features. background: (n,3) sample of scaled training rows.
+    predict_fn: (n,3) -> (n,) churn probability."""
+    d = len(x)
+    phi = np.zeros(d)
+
+    def v(S):
+        Xb = background.copy()
+        for j in S:
+            Xb[:, j] = x[j]
+        return predict_fn(Xb).mean()
+
+    for i in range(d):
+        others = [j for j in range(d) if j != i]
+        for r in range(d):
+            for S in combinations(others, r):
+                w = factorial(len(S)) * factorial(d - len(S) - 1) / factorial(d)
+                phi[i] += w * (v(S + (i,)) - v(S))
+    return phi
+
+@app.post("/explain")
+def explain_clv(req: CLVRequest, api_key: str = Depends(get_api_key)):
+    if scaler is None or clv_model is None or background_data is None:
+        raise HTTPException(status_code=500, detail="Model artifacts not loaded.")
+
+    x_scaled = scaler.transform([[req.recency, req.frequency, req.monetary]])[0]
+    
+    def predict_fn(xb):
+        features = torch.tensor(xb, dtype=torch.float32)
+        with torch.no_grad():
+            _, churn_logits = clv_model(features)
+            churn_probs = torch.sigmoid(churn_logits).squeeze().numpy()
+            # If batch size is 1, ensure it's still an array
+            if churn_probs.ndim == 0:
+                churn_probs = np.array([churn_probs])
+        return churn_probs
+        
+    base_value = predict_fn(background_data).mean()
+    prediction = predict_fn(np.array([x_scaled]))[0]
+    
+    phi = shapley_exact(predict_fn, x_scaled, background_data)
+    
+    return {
+        "base_value": float(base_value),
+        "prediction": float(prediction),
+        "contributions": {
+            "Recency": float(phi[0]),
+            "Frequency": float(phi[1]),
+            "Monetary": float(phi[2])
+        }
+    }
 
 @lru_cache(maxsize=1024)
 def _recommend_cached(customer_id: int):
