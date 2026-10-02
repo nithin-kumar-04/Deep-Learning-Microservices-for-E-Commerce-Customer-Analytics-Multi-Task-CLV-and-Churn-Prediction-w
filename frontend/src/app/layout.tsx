@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nexus Analytics | E-Commerce CLV & Churn Intelligence",
+  title: "Zenthiqa | E-Commerce CLV & Churn Intelligence",
   description: "Deep learning CLV, churn and recommendation dashboard.",
-  openGraph: { title: "Nexus Analytics", description: "CLV, churn and recommendations powered by deep learning." },
+  openGraph: { title: "Zenthiqa", description: "CLV, churn and recommendations powered by deep learning." },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
