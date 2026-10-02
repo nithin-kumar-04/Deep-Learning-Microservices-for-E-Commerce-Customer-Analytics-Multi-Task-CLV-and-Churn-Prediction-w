@@ -55,6 +55,11 @@ export const explainCLV = async (recency: number, frequency: number, monetary: n
   return response.data;
 };
 
+export const getAtRiskCustomers = async (): Promise<any[]> => {
+  const response = await apiClient.get('/at_risk_customers');
+  return response.data;
+};
+
 export const getRecommendations = async (customerId: number): Promise<RecommendationResponse> => {
   const response = await apiClient.get(`/recommend/${customerId}`);
   return response.data;

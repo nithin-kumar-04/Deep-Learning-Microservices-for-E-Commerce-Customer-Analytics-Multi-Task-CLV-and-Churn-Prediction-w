@@ -17,8 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { predictCLV, explainCLV, getRecommendations, checkHealth, CLVPrediction, CLVExplanation, Recommendation } from "@/lib/api";
-import { User, Activity, PoundSterling, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
+import { predictCLV, explainCLV, getRecommendations, checkHealth, getAtRiskCustomers, batchPredict, CLVPrediction, CLVExplanation, Recommendation } from "@/lib/api";
+import { User, Activity, PoundSterling, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download, Loader2, FileText } from "lucide-react";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -36,7 +36,16 @@ export default function Dashboard() {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recError, setRecError] = useState<string | null>(null);
   const [isSystemOnline, setIsSystemOnline] = useState<boolean>(true);
+  
+  // At-Risk State
+  const [highRiskCustomers, setHighRiskCustomers] = useState<any[]>([]);
+  const [atRiskLoading, setAtRiskLoading] = useState(false);
+  
+  // Batch State
+  const [batchFile, setBatchFile] = useState<File | null>(null);
+  const [batchLoading, setBatchLoading] = useState(false);
 
   React.useEffect(() => {
     const pollHealth = async () => {
@@ -48,14 +57,20 @@ export default function Dashboard() {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Mock High-Risk Customers for Demo
-  const highRiskCustomers = [
-    { id: "14096", churnRisk: 0.89, clv: 230.45, recency: 120, freq: 2, status: "Critical" },
-    { id: "17211", churnRisk: 0.81, clv: 412.10, recency: 85, freq: 3, status: "High Risk" },
-    { id: "15344", churnRisk: 0.76, clv: 110.00, recency: 60, freq: 1, status: "High Risk" },
-    { id: "12901", churnRisk: 0.65, clv: 890.50, recency: 45, freq: 8, status: "Medium Risk" },
-    { id: "13111", churnRisk: 0.58, clv: 1250.00, recency: 32, freq: 12, status: "Medium Risk" },
-  ];
+  React.useEffect(() => {
+    const fetchAtRisk = async () => {
+      try {
+        setAtRiskLoading(true);
+        const data = await getAtRiskCustomers();
+        setHighRiskCustomers(data);
+      } catch (err) {
+        console.error("Failed to fetch at risk customers", err);
+      } finally {
+        setAtRiskLoading(false);
+      }
+    };
+    fetchAtRisk();
+  }, []);
 
   const exportToCSV = () => {
     const headers = ["Customer ID,Churn Risk (%),Predicted CLV (£),Recency,Frequency,Status"];
@@ -72,22 +87,25 @@ export default function Dashboard() {
     document.body.removeChild(link);
   };
 
-  const handlePredict = async () => {
+  const handlePredict = async (r = recency, f = frequency, m = monetary, cId = customerId) => {
     setLoading(true);
     setError(null);
+    setRecError(null);
     try {
       const [pred, expl] = await Promise.all([
-        predictCLV(recency, frequency, monetary),
-        explainCLV(recency, frequency, monetary)
+        predictCLV(r, f, m),
+        explainCLV(r, f, m)
       ]);
       setPrediction(pred);
       setExplanation(expl);
       
       try {
-        const recs = await getRecommendations(Number(customerId));
+        const recs = await getRecommendations(Number(cId));
         setRecommendations(recs.recommendations);
-      } catch {
-        console.log("No recommendations found for this user (or backend not seeded yet).");
+      } catch (err: any) {
+        if (err?.response?.status === 404) {
+          setRecError("Customer ID not found in the product interaction database.");
+        }
         setRecommendations([]);
       }
     } catch (err) {
@@ -95,6 +113,39 @@ export default function Dashboard() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleQuickPick = (presetId: string) => {
+    setCustomerId(presetId);
+    let r = recency, f = frequency, m = monetary;
+    if (presetId === "12345") {
+      r = 10; f = 25; m = 1500;
+    } else if (presetId === "13000") {
+      r = 150; f = 2; m = 100;
+    }
+    setRecency(r);
+    setFrequency(f);
+    setMonetary(m);
+    handlePredict(r, f, m, presetId);
+  };
+  
+  const handleBatchSubmit = async () => {
+    if (!batchFile) return;
+    setBatchLoading(true);
+    try {
+      const blob = await batchPredict(batchFile);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "batch_predictions.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      alert("Batch processing failed. Check the file format.");
+    } finally {
+      setBatchLoading(false);
     }
   };
 
@@ -159,9 +210,9 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">Quick Picks</label>
-                      <Select onValueChange={(v) => setCustomerId(v)}>
-                        <SelectTrigger className="bg-background border-border text-foreground">
+                      <label htmlFor="quick-picks" className="text-sm font-medium text-foreground">Quick Picks</label>
+                      <Select onValueChange={handleQuickPick}>
+                        <SelectTrigger id="quick-picks" className="bg-background border-border text-foreground">
                           <SelectValue placeholder="Select a preset profile" />
                         </SelectTrigger>
                         <SelectContent className="bg-card border-border text-foreground">
@@ -171,7 +222,7 @@ export default function Dashboard() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground">Customer ID</label>
+                      <label htmlFor="customer-id" className="text-sm font-medium text-foreground">Customer ID</label>
                       <div className="flex items-center gap-2">
                         <Button 
                           variant="outline" 
@@ -181,6 +232,7 @@ export default function Dashboard() {
                           <ChevronLeft className="w-4 h-4" />
                         </Button>
                         <Input 
+                          id="customer-id"
                           value={customerId} 
                           onChange={(e) => setCustomerId(e.target.value)}
                           className="bg-background border-border focus-visible:ring-indigo-500 text-center" 
@@ -260,7 +312,7 @@ export default function Dashboard() {
                   </CardContent>
                   <CardFooter>
                     <Button 
-                      onClick={handlePredict} 
+                      onClick={() => handlePredict()} 
                       disabled={loading}
                       className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-lg shadow-indigo-500/25 transition-all"
                     >
@@ -446,10 +498,19 @@ export default function Dashboard() {
                         </Table>
                       </div>
                     ) : (
-                      <div className="h-40 flex flex-col items-center justify-center border border-dashed border-border rounded-lg text-muted-foreground">
-                        <Package className="w-8 h-8 mb-2 opacity-50" />
-                        <p className="text-sm">No recommendations generated.</p>
-                        <p className="text-xs">Run a prediction or ensure the user exists in the model.</p>
+                      <div className="h-40 flex flex-col items-center justify-center border border-dashed border-border rounded-lg text-muted-foreground p-4 text-center">
+                        {recError ? (
+                          <>
+                            <AlertTriangle className="w-8 h-8 mb-2 opacity-50 text-red-400" />
+                            <p className="text-sm text-red-400">{recError}</p>
+                          </>
+                        ) : (
+                          <>
+                            <Package className="w-8 h-8 mb-2 opacity-50" />
+                            <p className="text-sm">No recommendations generated.</p>
+                            <p className="text-xs">Run a prediction or ensure the user exists in the model.</p>
+                          </>
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -471,13 +532,37 @@ export default function Dashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6 pt-6">
-                <div className="border-2 border-dashed border-border rounded-xl p-10 flex flex-col items-center justify-center text-muted-foreground hover:border-indigo-500/50 hover:bg-slate-800/30 transition-all cursor-pointer">
-                  <Upload className="w-8 h-8 mb-3 text-foreground0" />
-                  <p className="text-sm font-medium text-foreground">Click to upload CSV</p>
-                  <p className="text-xs mt-1">or drag and drop here</p>
-                </div>
-                <Button className="w-full bg-slate-100 hover:bg-white text-slate-900 font-medium">
-                  Process Batch File
+                <label 
+                  htmlFor="batch-upload"
+                  className="border-2 border-dashed border-border rounded-xl p-10 flex flex-col items-center justify-center text-muted-foreground hover:border-indigo-500/50 hover:bg-slate-800/30 transition-all cursor-pointer relative"
+                >
+                  <input 
+                    type="file" 
+                    id="batch-upload" 
+                    className="absolute inset-0 opacity-0 cursor-pointer" 
+                    accept=".csv"
+                    onChange={(e) => setBatchFile(e.target.files?.[0] || null)}
+                  />
+                  {batchFile ? (
+                    <>
+                      <FileText className="w-8 h-8 mb-3 text-indigo-400" />
+                      <p className="text-sm font-medium text-foreground">{batchFile.name}</p>
+                      <p className="text-xs mt-1">Ready to process</p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-8 h-8 mb-3 text-foreground" />
+                      <p className="text-sm font-medium text-foreground">Click to upload CSV</p>
+                      <p className="text-xs mt-1">or drag and drop here</p>
+                    </>
+                  )}
+                </label>
+                <Button 
+                  onClick={handleBatchSubmit} 
+                  disabled={!batchFile || batchLoading}
+                  className="w-full bg-slate-100 hover:bg-white text-slate-900 font-medium"
+                >
+                  {batchLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing...</> : "Process Batch File"}
                 </Button>
               </CardContent>
             </Card>
@@ -509,7 +594,14 @@ export default function Dashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {highRiskCustomers.map((customer) => (
+                    {atRiskLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
+                          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                          Analyzing entire customer base...
+                        </TableCell>
+                      </TableRow>
+                    ) : highRiskCustomers.map((customer) => (
                       <TableRow key={customer.id} className="border-border hover:bg-muted/50 transition-colors">
                         <TableCell className="font-medium text-foreground">#{customer.id}</TableCell>
                         <TableCell>
