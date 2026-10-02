@@ -120,16 +120,17 @@ def load_artifacts():
         # Precompute At-Risk Customers
         try:
             from src.dl_clv_churn import prepare_mtl_data
-            user_features, X_full, _, _, _, _ = prepare_mtl_data(df)
+            user_ids, X_full, _, _, _, mtl_data = prepare_mtl_data(df)
             features_full = torch.tensor(X_full, dtype=torch.float32)
             with torch.no_grad():
                 clv_preds, churn_logits = clv_model(features_full)
                 churn_probs = torch.sigmoid(churn_logits).squeeze().numpy()
                 clv_preds = clv_preds.squeeze().numpy()
             
-            user_features['Churn_Risk'] = churn_probs
-            user_features['Predicted_CLV'] = clv_preds
-            top_risk = user_features.sort_values(by="Churn_Risk", ascending=False).head(50)
+            mtl_data['Churn_Risk'] = churn_probs
+            mtl_data['Predicted_CLV'] = clv_preds
+            mtl_data['CustomerID'] = user_ids
+            top_risk = mtl_data.sort_values(by="Churn_Risk", ascending=False).head(50)
             
             top_at_risk_cache.clear()
             for _, row in top_risk.iterrows():
@@ -304,8 +305,12 @@ async def batch_predict(file: UploadFile = File(...), api_key: str = Depends(get
     
     stream = io.StringIO()
     df.to_csv(stream, index=False)
-    
-    return {"filename": "batch_predictions.csv", "csv_data": stream.getvalue()}
+    from fastapi.responses import Response
+    return Response(
+        content=stream.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=batch_predictions.csv"}
+    )
 
 @app.get("/at_risk_customers")
 def at_risk_customers(api_key: str = Depends(get_api_key)):
