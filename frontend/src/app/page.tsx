@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { predictCLV, explainCLV, getRecommendations, checkHealth, getAtRiskCustomers, batchPredict, CLVPrediction, CLVExplanation, Recommendation } from "@/lib/api";
+import { predictCLV, explainCLV, getRecommendations, checkHealth, getAtRiskCustomers, batchPredict, getCustomerRFM, CLVPrediction, CLVExplanation, Recommendation } from "@/lib/api";
 import { User, Activity, PoundSterling, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download, Loader2, FileText } from "lucide-react";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -111,6 +111,25 @@ export default function Dashboard() {
     } catch (err) {
       setError("Failed to fetch predictions. Ensure the FastAPI backend is running.");
       console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadCustomerProfile = async (cId: string) => {
+    setCustomerId(cId);
+    setLoading(true);
+    setError(null);
+    try {
+      const rfm = await getCustomerRFM(cId);
+      setRecency(rfm.recency);
+      setFrequency(rfm.frequency);
+      setMonetary(rfm.monetary);
+      await handlePredict(rfm.recency, rfm.frequency, rfm.monetary, cId);
+    } catch (err) {
+      // If customer not found, we don't overwrite sliders, but we still try to predict 
+      // (which will fail for recommendations but work for CLV)
+      await handlePredict(recency, frequency, monetary, cId);
     } finally {
       setLoading(false);
     }
@@ -227,7 +246,7 @@ export default function Dashboard() {
                         <Button 
                           variant="outline" 
                           size="icon"
-                          onClick={() => setCustomerId(String(Math.max(1, parseInt(customerId) - 1)))}
+                          onClick={() => loadCustomerProfile(String(Math.max(1, parseInt(customerId) - 1)))}
                         >
                           <ChevronLeft className="w-4 h-4" />
                         </Button>
@@ -235,16 +254,18 @@ export default function Dashboard() {
                           id="customer-id"
                           value={customerId} 
                           onChange={(e) => setCustomerId(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && loadCustomerProfile(customerId)}
                           className="bg-background border-border focus-visible:ring-indigo-500 text-center" 
                         />
                         <Button 
                           variant="outline" 
                           size="icon"
-                          onClick={() => setCustomerId(String(parseInt(customerId) + 1))}
+                          onClick={() => loadCustomerProfile(String(parseInt(customerId) + 1))}
                         >
                           <ChevronRight className="w-4 h-4" />
                         </Button>
                       </div>
+                      <p className="text-xs text-muted-foreground mt-1">Press Enter to load profile</p>
                     </div>
                   </CardContent>
                 </Card>
