@@ -79,6 +79,26 @@ export const checkHealth = async (): Promise<boolean> => {
   }
 };
 
+export const getSegments = async (): Promise<any> => {
+  const response = await apiClient.get('/segments');
+  return response.data;
+};
+
+export const getBusinessOverview = async (): Promise<any> => {
+  const response = await apiClient.get('/business_overview');
+  return response.data;
+};
+
+export const getProductAnalytics = async (): Promise<any> => {
+  const response = await apiClient.get('/product_analytics');
+  return response.data;
+};
+
+export const generateEmail = async (customerId: string): Promise<{email_template: string}> => {
+  const response = await apiClient.post(`/generate_email/${customerId}`);
+  return response.data;
+};
+
 export const batchPredict = async (file: File): Promise<Blob> => {
   const formData = new FormData();
   formData.append('file', file);

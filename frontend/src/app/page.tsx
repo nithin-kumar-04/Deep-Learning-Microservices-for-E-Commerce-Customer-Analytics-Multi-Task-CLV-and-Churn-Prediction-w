@@ -17,10 +17,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { predictCLV, explainCLV, getRecommendations, checkHealth, getAtRiskCustomers, batchPredict, getCustomerRFM, CLVPrediction, CLVExplanation, Recommendation } from "@/lib/api";
-import { User, Activity, PoundSterling, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download, Loader2, FileText } from "lucide-react";
+import { predictCLV, explainCLV, getRecommendations, checkHealth, getAtRiskCustomers, batchPredict, getCustomerRFM, generateEmail, CLVPrediction, CLVExplanation, Recommendation } from "@/lib/api";
+import { User, Activity, PoundSterling, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download, Loader2, FileText, Mail } from "lucide-react";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { ThemeToggle } from "@/components/theme-toggle";
+import SegmentsTab from '@/components/SegmentsTab';
+import OverviewTab from '@/components/OverviewTab';
+import ProductsTab from '@/components/ProductsTab';
 
 export default function Dashboard() {
   const [customerId, setCustomerId] = useState<string>("12345");
@@ -46,6 +49,22 @@ export default function Dashboard() {
   // Batch State
   const [batchFile, setBatchFile] = useState<File | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
+
+  // Email state
+  const [emailTemplate, setEmailTemplate] = useState<string | null>(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+
+  const handleGenerateEmail = async () => {
+    setEmailLoading(true);
+    try {
+      const res = await generateEmail(customerId);
+      setEmailTemplate(res.email_template);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setEmailLoading(false);
+    }
+  };
 
   React.useEffect(() => {
     const pollHealth = async () => {
@@ -120,6 +139,7 @@ export default function Dashboard() {
     setCustomerId(cId);
     setLoading(true);
     setError(null);
+    setEmailTemplate(null);
     try {
       const rfm = await getCustomerRFM(cId);
       setRecency(rfm.recency);
@@ -206,11 +226,26 @@ export default function Dashboard() {
         <Tabs defaultValue="simulator" className="w-full space-y-6">
           <div className="flex items-center justify-between">
             <TabsList className="bg-muted border border-border">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="simulator">Customer Simulator</TabsTrigger>
+              <TabsTrigger value="segments">Segments</TabsTrigger>
+              <TabsTrigger value="products">Products</TabsTrigger>
               <TabsTrigger value="batch">Batch Processing</TabsTrigger>
               <TabsTrigger value="high-risk">At-Risk Customers</TabsTrigger>
             </TabsList>
           </div>
+
+          <TabsContent value="overview" className="focus:outline-none">
+            <OverviewTab />
+          </TabsContent>
+
+          <TabsContent value="segments" className="focus:outline-none">
+            <SegmentsTab />
+          </TabsContent>
+
+          <TabsContent value="products" className="focus:outline-none">
+            <ProductsTab />
+          </TabsContent>
 
           <TabsContent value="simulator" className="space-y-6 focus:outline-none">
             
@@ -535,6 +570,22 @@ export default function Dashboard() {
                       </div>
                     )}
                   </CardContent>
+                  <CardFooter className="flex flex-col gap-4">
+                    <Button 
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white" 
+                      onClick={handleGenerateEmail}
+                      disabled={emailLoading}
+                    >
+                      {emailLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
+                      Draft Win-Back Email
+                    </Button>
+                    
+                    {emailTemplate && (
+                      <div className="w-full p-4 bg-muted rounded-md text-sm whitespace-pre-wrap font-mono text-muted-foreground text-left">
+                        {emailTemplate}
+                      </div>
+                    )}
+                  </CardFooter>
                 </Card>
 
               </div>
