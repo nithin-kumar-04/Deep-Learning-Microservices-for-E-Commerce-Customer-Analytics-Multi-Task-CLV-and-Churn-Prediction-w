@@ -448,6 +448,6 @@ Based on your past purchases, we think you'd absolutely love these:
 Use code WINBACK20 for 20% off your next order.
 
 Best,
-The Nexus Analytics Team
+The Zenthiqa Team
 """
     return {"email_template": template}
