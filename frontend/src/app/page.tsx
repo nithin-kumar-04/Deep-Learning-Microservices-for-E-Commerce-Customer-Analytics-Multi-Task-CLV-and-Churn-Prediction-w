@@ -269,7 +269,7 @@ export default function Dashboard() {
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <label htmlFor="quick-picks" className="text-sm font-medium text-foreground">Quick Picks</label>
-                      <Select onValueChange={handleQuickPick}>
+                      <Select onValueChange={(val) => handleQuickPick(val as string)}>
                         <SelectTrigger id="quick-picks" className="bg-background border-border text-foreground">
                           <SelectValue placeholder="Select a preset profile" />
                         </SelectTrigger>
@@ -326,7 +326,7 @@ export default function Dashboard() {
                       </div>
                       <Slider 
                         value={[recency]} 
-                        onValueChange={(v) => setRecency(v[0])} 
+                        onValueChange={(v) => setRecency(Array.isArray(v) ? v[0] : (v as number))} 
                         max={365} 
                         step={1} 
                         className="[&_[role=slider]]:bg-indigo-500"
@@ -340,7 +340,7 @@ export default function Dashboard() {
                       </div>
                       <Slider 
                         value={[frequency]} 
-                        onValueChange={(v) => setFrequency(v[0])} 
+                        onValueChange={(v) => setFrequency(Array.isArray(v) ? v[0] : (v as number))} 
                         max={50} 
                         step={1} 
                         className="[&_[role=slider]]:bg-indigo-500"
@@ -457,7 +457,7 @@ export default function Dashboard() {
                                   cursor={{fill: '#1e293b', opacity: 0.4}}
                                   contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px' }}
                                   itemStyle={{ color: '#f8fafc' }}
-                                  formatter={(val: number) => [`${val > 0 ? '+' : ''}${(val * 100).toFixed(1)}%`, 'Effect on Churn Risk']}
+                                  formatter={(val: any) => [`${Number(val) > 0 ? '+' : ''}${(Number(val) * 100).toFixed(1)}%`, 'Effect on Churn Risk']}
                                 />
                                 <Bar dataKey="value" radius={[4, 4, 4, 4]}>
                                   {
