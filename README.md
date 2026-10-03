@@ -1,4 +1,5 @@
-# Deep Learning Microservices for E-Commerce Customer Analytics: Multi-Task CLV and Churn Prediction
+
+ # Deep Learning Microservices for E-Commerce Customer Analytics: Multi-Task CLV and Churn Prediction
 
 Deep learning system for e-commerce analytics: multi-task PyTorch model predicting 90-day CLV and churn from RFM features, plus an NCF product recommender. Served via FastAPI, visualized in a Next.js dashboard, and deployed to AWS (EC2, S3) with Terraform and Docker.
 

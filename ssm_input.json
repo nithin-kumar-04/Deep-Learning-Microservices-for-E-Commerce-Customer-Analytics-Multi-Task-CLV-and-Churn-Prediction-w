@@ -1,9 +1,0 @@
-{
-  "DocumentName": "AWS-RunShellScript",
-  "InstanceIds": ["i-07a83eafb7efc80f4"],
-  "Parameters": {
-    "commands": [
-      "su - ec2-user -c 'cd /home/ec2-user/ecommerce-dl-microservices && git pull origin main && docker-compose restart'"
-    ]
-  }
-}
