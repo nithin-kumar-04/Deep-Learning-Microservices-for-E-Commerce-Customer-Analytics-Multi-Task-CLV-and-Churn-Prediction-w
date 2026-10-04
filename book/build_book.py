@@ -33,10 +33,11 @@ def heading(doc, text, level=1, center=False):
         run.font.color.rgb = RGBColor(0, 0, 0)
     return h
 
-def para(doc, text, justify=True, bold=False, size=12, color=None):
+def para(doc, text, justify=True, bold=False, size=12, color=None, spacing=None):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY if justify else WD_ALIGN_PARAGRAPH.LEFT
-    p.paragraph_format.line_spacing = 1.5
+    if spacing:
+        p.paragraph_format.line_spacing = spacing
     run = p.add_run(text)
     run.font.size  = Pt(size)
     run.font.bold  = bold
@@ -45,10 +46,11 @@ def para(doc, text, justify=True, bold=False, size=12, color=None):
         run.font.color.rgb = color
     return p
 
-def para_center(doc, text, bold=False, size=12, color=None):
+def para_center(doc, text, bold=False, size=12, color=None, spacing=None):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.line_spacing = 1.5
+    if spacing:
+        p.paragraph_format.line_spacing = spacing
     run = p.add_run(text)
     run.font.size  = Pt(size)
     run.font.bold  = bold
@@ -56,6 +58,10 @@ def para_center(doc, text, bold=False, size=12, color=None):
     if color:
         run.font.color.rgb = color
     return p
+
+def body_para(doc, text, justify=True, bold=False, size=12):
+    """Body paragraph with 1.5 line spacing — use for chapter content."""
+    return para(doc, text, justify=justify, bold=bold, size=size, spacing=1.5)
 
 def bullet(doc, text):
     p   = doc.add_paragraph(style='List Bullet')
@@ -76,7 +82,10 @@ def numbered(doc, text):
     return p
 
 def sep(doc):
-    doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after  = Pt(0)
+
 
 def add_image(doc, path, caption=None, width=5.5):
     if os.path.exists(path):
@@ -226,9 +235,6 @@ def build():
     doc.styles['Normal'].font.size = Pt(12)
 
     # ── TITLE PAGE ─────────────────────────────────────────────────────────────
-    # Matches reference: title in RED at top, thesis statement, B.Tech bold,
-    # dept bold, team list, guide section, logo centered, dept+college at bottom in blue
-    sep(doc)
     sep(doc)
     para_center(doc,
         "ZENTHIQA: DEEP LEARNING MICROSERVICES FOR\nE-COMMERCE CUSTOMER ANALYTICS",
@@ -245,7 +251,6 @@ def build():
                 color=RGBColor(0xC0, 0x00, 0x00))
     sep(doc)
     para_center(doc, "Submitted by", size=12)
-    sep(doc)
     para_center(doc, "GUDABANDI NITHIN KUMAR          : 23L61A5418", bold=True, size=12)
     para_center(doc, "BURAVELLI PARDHASARADHI         : 23L61A5408", bold=True, size=12)
     para_center(doc, "PECHETTI DEVENDRA VENKATA SAI   : 24L65A5406", bold=True, size=12)
@@ -253,35 +258,28 @@ def build():
     sep(doc)
     para_center(doc, "Under the guidance of", size=12)
     para_center(doc, "Mrs. P. Gayatri", bold=True, size=12)
-    para_center(doc, "Assistant Professor,", size=11)
-    para_center(doc, "Department of AI & DS", size=11)
+    para_center(doc, "Assistant Professor, Department of AI & DS", size=11)
     sep(doc)
-    # Logo centred in the middle of the page
     if os.path.exists('college_logo.jpg'):
-        doc.add_picture('college_logo.jpg', width=Inches(1.8))
+        doc.add_picture('college_logo.jpg', width=Inches(1.6))
         doc.paragraphs[-1].alignment = 1
     sep(doc)
     para_center(doc, "DEPARTMENT OF ARTIFICIAL INTELLIGENCE AND DATA SCIENCE",
-                bold=True, size=13, color=RGBColor(0x00, 0x00, 0xCC))
+                bold=True, size=12, color=RGBColor(0x00, 0x00, 0xCC))
     para_center(doc, "CHAITANYA ENGINEERING COLLEGE",
-                bold=True, size=13, color=RGBColor(0x00, 0x00, 0xCC))
+                bold=True, size=12, color=RGBColor(0x00, 0x00, 0xCC))
     para_center(doc, "(APPROVED BY AICTE & AFFILIATED TO JNTU GURAJADA, VIZIANAGARAM)",
                 size=10)
-    sep(doc)
     para_center(doc, "2026 – 2027", bold=True, size=12)
     doc.add_page_break()
 
     # ── BONAFIDE CERTIFICATE ──────────────────────────────────────────────────
-    # Reference: college name + approval text at top, logo centered large,
-    # BONAFIDE CERTIFICATE bold centered, body text, two-column signatures
-    # (Project Guide left, Head of Department right), External Examiner below standalone.
-    # No section header table — just plain text + logo on this page.
     para_center(doc, "CHAITANYA ENGINEERING COLLEGE", bold=True, size=13)
     para_center(doc,
         "(Approved by AICTE, Affiliated to JNTU GURAJADA, VIZIANAGARAM)", size=10)
     sep(doc)
     if os.path.exists('college_logo.jpg'):
-        doc.add_picture('college_logo.jpg', width=Inches(2.2))
+        doc.add_picture('college_logo.jpg', width=Inches(1.8))
         doc.paragraphs[-1].alignment = 1
     sep(doc)
     para_center(doc, "BONAFIDE CERTIFICATE", bold=True, size=14)
@@ -294,32 +292,25 @@ def build():
         'P. Devendra Venkata Sai (24L65A5406), M. Umadevi (23L61A5425) '
         'as part of the IV B.Tech, II Semester curriculum in '
         'Artificial Intelligence and Data Science during the academic year 2026–2027.')
-    sep(doc); sep(doc); sep(doc)
+    sep(doc); sep(doc)
 
     # Two-column borderless signature layout
     sig = doc.add_table(rows=2, cols=2)
     sig.style = 'Table Grid'
     remove_table_borders_local(sig)
-    # Row 0: signature labels
     sig.rows[0].cells[0].paragraphs[0].add_run("Project Guide").bold = True
     sig.rows[0].cells[0].paragraphs[0].runs[0].font.size = Pt(11)
     sig.rows[0].cells[1].paragraphs[0].add_run("Head of Department").bold = True
     sig.rows[0].cells[1].paragraphs[0].runs[0].font.size = Pt(11)
-    # Row 1: name + details
-    for txt, bold in [("Mrs. P. Gayatri,", True),
-                      ("Assistant Professor,", False),
-                      ("Department of AI & DS,", False),
-                      ("Chaitanya Engineering College", False)]:
+    for txt, bold in [("Mrs. P. Gayatri,", True), ("Assistant Professor,", False),
+                      ("Department of AI & DS,", False), ("Chaitanya Engineering College", False)]:
         p = sig.rows[1].cells[0].add_paragraph()
         r = p.add_run(txt); r.bold = bold; r.font.size = Pt(11)
-    for txt, bold in [("Dr. K.N.S. Lakshmi,", True),
-                      ("Professor & HOD,", False),
-                      ("Department of AI,", False),
-                      ("Chaitanya Engineering College", False)]:
+    for txt, bold in [("Dr. K.N.S. Lakshmi,", True), ("Professor & HOD,", False),
+                      ("Department of AI,", False), ("Chaitanya Engineering College", False)]:
         p = sig.rows[1].cells[1].add_paragraph()
         r = p.add_run(txt); r.bold = bold; r.font.size = Pt(11)
-    sep(doc); sep(doc)
-    # External examiner — standalone left
+    sep(doc)
     ext_p = doc.add_paragraph()
     ext_r = ext_p.add_run("External Examiner")
     ext_r.bold = True; ext_r.font.size = Pt(11)
@@ -327,8 +318,6 @@ def build():
     doc.add_page_break()
 
     # ── DECLARATION ───────────────────────────────────────────────────────────
-    # Reference: CEC letterhead (logo+name+address) in page header,
-    # DECLARATION bold centered, body text justified, names RIGHT-ALIGNED at bottom.
     start_cec_section(doc)
     para_center(doc, "DECLARATION", bold=True, size=14)
     sep(doc)
@@ -343,8 +332,7 @@ def build():
         'for the award of the degree Bachelor of Technology in Artificial Intelligence '
         'and Data Science. This entire project is done with the best of our knowledge '
         'and is not submitted to any University for the award of degree.')
-    sep(doc); sep(doc); sep(doc)
-    # Names right-aligned — matching the reference
+    sep(doc); sep(doc)
     for line in [
         "GUDABANDI NITHIN KUMAR          : 23L61A5418",
         "BURAVELLI PARDHASARADHI         : 23L61A5408",
@@ -357,22 +345,15 @@ def build():
     doc.add_page_break()
 
     # ── ACKNOWLEDGEMENT ───────────────────────────────────────────────────────
-    # Reference: CEC letterhead in page header (same section), ACKNOWLEDGEMENT centered,
-    # body paragraphs justified, names right-aligned at bottom.
     para_center(doc, "ACKNOWLEDGEMENT", bold=True, size=14)
     sep(doc)
-    para(doc, "With great solemnity and sincerity, we express our deepest sense of gratitude and pay our sincere thanks to our Project guide Mrs. P. Gayatri, Assistant Professor, Department of Artificial Intelligence and Data Science, Chaitanya Engineering College, who evinced keen interest in our efforts and provided her invaluable guidance throughout our project work. Her constant encouragement, constructive feedback, and patient mentorship were fundamental to the success of this project.")
-    sep(doc)
+    para(doc, "With great solemnity and sincerity, we express our deepest sense of gratitude and pay our sincere thanks to our Project guide Mrs. P. Gayatri, Assistant Professor, Department of Artificial Intelligence and Data Science, Chaitanya Engineering College, who evinced keen interest in our efforts and provided her invaluable guidance throughout our project work.")
     para(doc, "We thank our Dr. K.N.S Lakshmi, Professor, Head of the Department of Artificial Intelligence, who helped us to complete our project work in a truthful and systematic manner, and who consistently motivated us to aim for technical excellence.")
-    sep(doc)
-    para(doc, "We extend our sincere gratitude to our principal Dr. K. Suresh, Ph.D., for his kind attention and valuable guidance throughout this academic programme. His leadership has created an environment of innovation and research that has greatly benefited our project work.")
-    sep(doc)
+    para(doc, "We extend our sincere gratitude to our principal Dr. K. Suresh, Ph.D., for his kind attention and valuable guidance throughout this academic programme. His leadership has created an environment of innovation and research that greatly benefited our project work.")
     para(doc, "We wish to express gratitude to our Management Members who supported us by providing excellent laboratory infrastructure and facilities, without which the practical implementation of this project would not have been possible.")
-    sep(doc)
     para(doc, "We are also deeply thankful to All Staff Members of the Department of Artificial Intelligence and Data Science, for their direct and indirect support in completing this project work through their valuable suggestions and technical guidance.")
-    sep(doc)
     para(doc, "Above all, we acknowledge our profound gratitude to our parents and families, whose moral support, encouragement, and sacrifices have been the greatest driving force throughout our academic journey.")
-    sep(doc); sep(doc)
+    sep(doc)
     for line in [
         "GUDABANDI NITHIN KUMAR          : 23L61A5418",
         "BURAVELLI PARDHASARADHI         : 23L61A5408",
@@ -383,7 +364,7 @@ def build():
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         r = p.add_run(line); r.bold = True; r.font.size = Pt(12); r.font.name = "Times New Roman"
     doc.add_page_break()
-    end_cec_section(doc)   # back to normal (no special header)
+    end_cec_section(doc)
 
     # ── ABSTRACT ──────────────────────────────────────────────────────────────
     heading(doc, "ABSTRACT", level=1, center=True)
