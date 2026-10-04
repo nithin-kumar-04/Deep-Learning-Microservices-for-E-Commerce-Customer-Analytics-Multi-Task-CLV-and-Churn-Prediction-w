@@ -199,7 +199,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans selection:bg-indigo-500/30">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50/50 via-background to-purple-50/50 dark:from-indigo-950/20 dark:via-background dark:to-purple-950/20 text-foreground font-sans selection:bg-indigo-500/30">
       
       {/* Header */}
       <header className="border-b border-border bg-card backdrop-blur-xl sticky top-0 z-50">
@@ -208,12 +208,12 @@ export default function Dashboard() {
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <TrendingUp className="w-4 h-4 text-white" />
             </div>
-            <h1 className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
+            <h1 className="font-bold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-purple-500">
               Zenthiqa
             </h1>
           </div>
-          <div className="flex items-center gap-4 text-sm font-medium text-muted-foreground">
-            <span className="hidden md:inline text-xs border border-border px-2 py-1 rounded-md">
+          <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
+            <span className="hidden md:inline text-xs border border-border px-3 py-1.5 rounded-full bg-background/50">
               Demo data: UCI Online Retail, 2010–2011 (v1.0.0)
             </span>
             <span className="flex items-center gap-1.5">
@@ -228,14 +228,14 @@ export default function Dashboard() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         
         <Tabs defaultValue="simulator" className="w-full space-y-6">
-          <div className="flex items-center justify-between">
-            <TabsList className="bg-muted border border-border">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="simulator">Customer Simulator</TabsTrigger>
-              <TabsTrigger value="segments">Segments</TabsTrigger>
-              <TabsTrigger value="products">Products</TabsTrigger>
-              <TabsTrigger value="batch">Batch Processing</TabsTrigger>
-              <TabsTrigger value="high-risk">At-Risk Customers</TabsTrigger>
+          <div className="w-full overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0">
+            <TabsList className="bg-card/60 backdrop-blur-md border border-border/50 p-1 rounded-xl h-auto flex-nowrap w-max min-w-full justify-start shadow-sm">
+              <TabsTrigger value="overview" className="rounded-lg data-[state=active]:bg-indigo-500/10 data-[state=active]:text-indigo-500">Overview</TabsTrigger>
+              <TabsTrigger value="simulator" className="rounded-lg data-[state=active]:bg-indigo-500/10 data-[state=active]:text-indigo-500">Customer Simulator</TabsTrigger>
+              <TabsTrigger value="segments" className="rounded-lg data-[state=active]:bg-indigo-500/10 data-[state=active]:text-indigo-500">Segments</TabsTrigger>
+              <TabsTrigger value="products" className="rounded-lg data-[state=active]:bg-indigo-500/10 data-[state=active]:text-indigo-500">Products</TabsTrigger>
+              <TabsTrigger value="batch" className="rounded-lg data-[state=active]:bg-indigo-500/10 data-[state=active]:text-indigo-500">Batch Processing</TabsTrigger>
+              <TabsTrigger value="high-risk" className="rounded-lg data-[state=active]:bg-indigo-500/10 data-[state=active]:text-indigo-500">At-Risk Customers</TabsTrigger>
             </TabsList>
           </div>
 
@@ -258,7 +258,7 @@ export default function Dashboard() {
               {/* Left Column: Controls */}
               <div className="lg:col-span-4 space-y-6">
                 
-                <Card className="bg-card border-border backdrop-blur-sm shadow-xl">
+                <Card className="bg-card/60 border-border/50 backdrop-blur-md shadow-lg hover:shadow-xl transition-all duration-300">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <User className="w-5 h-5 text-indigo-400" />
@@ -309,7 +309,7 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-card border-border backdrop-blur-sm shadow-xl">
+                <Card className="bg-card/60 border-border/50 backdrop-blur-md shadow-lg hover:shadow-xl transition-all duration-300">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <RefreshCw className="w-5 h-5 text-purple-400" />
@@ -395,7 +395,7 @@ export default function Dashboard() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* CLV Card */}
-                  <Card className="bg-card border-border relative overflow-hidden group">
+                  <Card className="bg-card/60 border-border/50 backdrop-blur-md relative overflow-hidden group shadow-lg hover:shadow-xl transition-all duration-300">
                     <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                     <CardHeader className="pb-2">
                       <CardDescription className="text-muted-foreground uppercase tracking-wider font-semibold text-xs">
@@ -414,7 +414,7 @@ export default function Dashboard() {
                   </Card>
 
                   {/* Churn Card */}
-                  <Card className="bg-card border-border relative overflow-hidden group">
+                  <Card className="bg-card/60 border-border/50 backdrop-blur-md relative overflow-hidden group shadow-lg hover:shadow-xl transition-all duration-300">
                      <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                     <CardHeader className="pb-2">
                       <CardDescription className="text-muted-foreground uppercase tracking-wider font-semibold text-xs flex justify-between items-center">
@@ -483,7 +483,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Visual Analytics Chart */}
-                <Card className="bg-card border-border">
+                <Card className="bg-card/60 border-border/50 backdrop-blur-md shadow-lg hover:shadow-xl transition-all duration-300">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <BarChart2 className="w-5 h-5 text-indigo-400" />
@@ -516,7 +516,7 @@ export default function Dashboard() {
                 </Card>
 
                 {/* Recommendations */}
-                <Card className="bg-card border-border">
+                <Card className="bg-card/60 border-border/50 backdrop-blur-md shadow-lg hover:shadow-xl transition-all duration-300">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <Package className="w-5 h-5 text-indigo-400" />
@@ -603,7 +603,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="batch" className="focus:outline-none">
-            <Card className="bg-card border-border shadow-xl max-w-2xl mx-auto mt-10">
+            <Card className="bg-card/60 border-border/50 backdrop-blur-md shadow-xl max-w-2xl mx-auto mt-10 transition-all duration-300">
               <CardHeader className="text-center pb-2">
                 <div className="mx-auto w-12 h-12 bg-indigo-500/10 rounded-full flex items-center justify-center mb-4">
                   <Upload className="w-6 h-6 text-indigo-400" />
@@ -651,7 +651,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="high-risk" className="focus:outline-none">
-            <Card className="bg-card border-border shadow-xl">
+            <Card className="bg-card/60 border-border/50 backdrop-blur-md shadow-xl transition-all duration-300">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <div>
                   <CardTitle className="text-2xl font-light">At-Risk Customers</CardTitle>

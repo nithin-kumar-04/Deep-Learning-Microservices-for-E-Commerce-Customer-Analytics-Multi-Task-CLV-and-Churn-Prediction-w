@@ -18,17 +18,20 @@ class EcommerceDataset(Dataset):
         return self.user_ids[idx], self.item_ids[idx], self.labels[idx]
 
 class NCFRecommender(nn.Module):
-    def __init__(self, num_users, num_items, embedding_dim=32):
+    def __init__(self, num_users, num_items, embedding_dim=128):
         super(NCFRecommender, self).__init__()
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
         self.item_embedding = nn.Embedding(num_items, embedding_dim)
         
         self.fc_layers = nn.Sequential(
-            nn.Linear(embedding_dim * 2, 64),
-            nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Linear(embedding_dim * 2, 128),
+            nn.GELU(),
+            nn.Dropout(0.4),
+            nn.Linear(128, 64),
+            nn.GELU(),
+            nn.Dropout(0.3),
             nn.Linear(64, 32),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(32, 1)
         )
 
@@ -59,8 +62,8 @@ def prepare_data(df: pd.DataFrame):
     
     negatives = []
     for u in interactions['user_idx'].unique():
-        # Randomly sample 3 negative items per user
-        neg_items = np.random.randint(0, num_items, 3)
+        # Randomly sample 10 negative items per user for better robust embeddings
+        neg_items = np.random.randint(0, num_items, 10)
         for i in neg_items:
             negatives.append({'user_idx': u, 'item_idx': i, 'label': 0.0})
             
@@ -69,14 +72,15 @@ def prepare_data(df: pd.DataFrame):
     
     return train_df, user_mapping, item_mapping, interactions
 
-def train_model(train_df, num_users, num_items, epochs=3, batch_size=2048):
+def train_model(train_df, num_users, num_items, epochs=30, batch_size=2048):
     print(f"Training NCF Model for {epochs} epochs...")
     dataset = EcommerceDataset(train_df['user_idx'].values, train_df['item_idx'].values, train_df['label'].values)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     model = NCFRecommender(num_users, num_items)
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     
     model.train()
     for epoch in range(epochs):
@@ -88,6 +92,7 @@ def train_model(train_df, num_users, num_items, epochs=3, batch_size=2048):
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
+        scheduler.step()
         print(f"Epoch {epoch+1}/{epochs} - Loss: {total_loss/len(dataloader):.4f}")
         
     return model
@@ -152,7 +157,7 @@ if __name__ == "__main__":
     num_users = len(user_mapping)
     num_items = len(item_mapping)
     
-    model = train_model(train_df, num_users, num_items, epochs=3)
+    model = train_model(train_df, num_users, num_items, epochs=30)
     
     os.makedirs("artifacts", exist_ok=True)
     torch.save(model.state_dict(), "artifacts/dl_recommender.pt")
