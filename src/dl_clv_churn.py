@@ -22,28 +22,31 @@ class CustomerDataset(Dataset):
 class MultiTaskCLVChurn(nn.Module):
     def __init__(self, input_dim):
         super(MultiTaskCLVChurn, self).__init__()
-        # Shared layers
+        # Shared layers (State-of-the-art Tabular DL style)
         self.shared = nn.Sequential(
-            nn.Linear(input_dim, 32),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(32, 16),
-            nn.ReLU()
+            nn.Linear(input_dim, 128),
+            nn.LayerNorm(128),
+            nn.GELU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, 64),
+            nn.LayerNorm(64),
+            nn.GELU(),
+            nn.Dropout(0.2)
         )
         
         # Head 1: CLV Regression (Continuous)
         self.clv_head = nn.Sequential(
-            nn.Linear(16, 8),
-            nn.ReLU(),
-            nn.Linear(8, 1),
+            nn.Linear(64, 32),
+            nn.GELU(),
+            nn.Linear(32, 1),
             nn.ReLU() # CLV can't be negative
         )
         
         # Head 2: Churn Classification (Probability)
         self.churn_head = nn.Sequential(
-            nn.Linear(16, 8),
-            nn.ReLU(),
-            nn.Linear(8, 1)
+            nn.Linear(64, 32),
+            nn.GELU(),
+            nn.Linear(32, 1)
         )
 
     def forward(self, x):
@@ -86,7 +89,7 @@ def prepare_mtl_data(df: pd.DataFrame):
     
     return mtl_data.index.values, X, y_clv, y_churn, scaler, mtl_data
 
-def train_mtl_model(X, y_clv, y_churn, epochs=15, batch_size=256):
+def train_mtl_model(X, y_clv, y_churn, epochs=100, batch_size=256):
     print(f"Training MTL Model for {epochs} epochs...")
     dataset = CustomerDataset(X, y_clv, y_churn)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -97,7 +100,8 @@ def train_mtl_model(X, y_clv, y_churn, epochs=15, batch_size=256):
     criterion_clv = nn.MSELoss()
     criterion_churn = nn.BCEWithLogitsLoss()
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.005, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     
     model.train()
     for epoch in range(epochs):
@@ -116,6 +120,7 @@ def train_mtl_model(X, y_clv, y_churn, epochs=15, batch_size=256):
             optimizer.step()
             total_loss += loss.item()
             
+        scheduler.step()
         print(f"Epoch {epoch+1}/{epochs} - MTL Loss: {total_loss/len(dataloader):.4f}")
         
     return model
@@ -162,7 +167,7 @@ if __name__ == "__main__":
     df = pd.read_parquet("data/cleaned_retail.parquet")
     customer_ids, X, y_clv, y_churn, scaler, mtl_data = prepare_mtl_data(df)
     
-    model = train_mtl_model(X, y_clv, y_churn, epochs=15)
+    model = train_mtl_model(X, y_clv, y_churn, epochs=100)
     
     os.makedirs("artifacts", exist_ok=True)
     torch.save(model.state_dict(), "artifacts/dl_clv_churn.pt")
