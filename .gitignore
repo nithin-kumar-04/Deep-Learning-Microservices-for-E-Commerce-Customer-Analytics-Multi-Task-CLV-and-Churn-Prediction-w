@@ -14,3 +14,10 @@ temporary/
 ecommerce-confidential/
 *.pem
 *.key
+
+# Book generated files and assets
+book/*.docx
+book/uml_*.jpg
+book/WhatsApp Image *.jpeg
+book/screenshot_*.png
+book/college_logo.jpg
