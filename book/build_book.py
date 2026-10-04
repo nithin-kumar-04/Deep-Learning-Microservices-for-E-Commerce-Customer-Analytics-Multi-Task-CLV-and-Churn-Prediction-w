@@ -112,6 +112,20 @@ def table_ncol(doc, rows_data, header=None):
 # COLLEGE HEADER — placed in Word's actual page header section
 # ──────────────────────────────────────────────────────────────────────────────
 
+def remove_table_borders_local(table):
+    """Remove all visible borders from a table (for signature layouts, etc.)."""
+    tbl = table._tbl
+    tblPr = tbl.find(qn('w:tblPr'))
+    if tblPr is None:
+        tblPr = OxmlElement('w:tblPr'); tbl.insert(0, tblPr)
+    tblBdr = OxmlElement('w:tblBorders')
+    for b in ['top','left','bottom','right','insideH','insideV']:
+        bel = OxmlElement(f'w:{b}')
+        bel.set(qn('w:val'), 'none'); bel.set(qn('w:sz'), '0')
+        bel.set(qn('w:space'), '0'); bel.set(qn('w:color'), 'auto')
+        tblBdr.append(bel)
+    tblPr.append(tblBdr)
+
 def _fill_cec_header_section(header):
     """Fill a Word header object with the CEC letterhead (logo + college info)."""
     # Clear any existing default paragraph
@@ -211,94 +225,111 @@ def build():
     doc.styles['Normal'].font.name = 'Times New Roman'
     doc.styles['Normal'].font.size = Pt(12)
 
-    # ── TITLE PAGE ────────────────────────────────────────────────────────────
+    # ── TITLE PAGE ─────────────────────────────────────────────────────────────
+    # Matches reference: title in RED at top, thesis statement, B.Tech bold,
+    # dept bold, team list, guide section, logo centered, dept+college at bottom in blue
     sep(doc)
+    sep(doc)
+    para_center(doc,
+        "ZENTHIQA: DEEP LEARNING MICROSERVICES FOR\nE-COMMERCE CUSTOMER ANALYTICS",
+        bold=True, size=16, color=RGBColor(0xC0, 0x00, 0x00))
+    sep(doc)
+    para_center(doc,
+        "A thesis submitted in the partial fulfilment of the requirements for the award in",
+        size=11)
+    para_center(doc, "the degree of", size=11)
+    sep(doc)
+    para_center(doc, "BACHELOR OF TECHNOLOGY", bold=True, size=13)
+    para_center(doc, "in", size=12)
+    para_center(doc, "ARTIFICIAL INTELLIGENCE AND DATA SCIENCE", bold=True, size=13,
+                color=RGBColor(0xC0, 0x00, 0x00))
+    sep(doc)
+    para_center(doc, "Submitted by", size=12)
+    sep(doc)
+    para_center(doc, "GUDABANDI NITHIN KUMAR          : 23L61A5418", bold=True, size=12)
+    para_center(doc, "BURAVELLI PARDHASARADHI         : 23L61A5408", bold=True, size=12)
+    para_center(doc, "PECHETTI DEVENDRA VENKATA SAI   : 24L65A5406", bold=True, size=12)
+    para_center(doc, "MANTRI UMADEVI                  : 23L61A5425", bold=True, size=12)
+    sep(doc)
+    para_center(doc, "Under the guidance of", size=12)
+    para_center(doc, "Mrs. P. Gayatri", bold=True, size=12)
+    para_center(doc, "Assistant Professor,", size=11)
+    para_center(doc, "Department of AI & DS", size=11)
+    sep(doc)
+    # Logo centred in the middle of the page
     if os.path.exists('college_logo.jpg'):
         doc.add_picture('college_logo.jpg', width=Inches(1.8))
         doc.paragraphs[-1].alignment = 1
     sep(doc)
-    para_center(doc, "CHAITANYA ENGINEERING COLLEGE", bold=True, size=14,
-                color=RGBColor(0xC0, 0x00, 0x00))
-    para_center(doc, "Approved by AICTE, New Delhi  |  Accredited by NAAC", size=10)
-    para_center(doc, "Affiliated to JNTU Kakinada, Visakhapatnam, Andhra Pradesh", size=10)
-    sep(doc)
     para_center(doc, "DEPARTMENT OF ARTIFICIAL INTELLIGENCE AND DATA SCIENCE",
-                bold=True, size=13)
-    sep(doc); sep(doc)
-    para_center(doc, "PROJECT REPORT", bold=True, size=15)
-    para_center(doc, "On", size=13)
+                bold=True, size=13, color=RGBColor(0x00, 0x00, 0xCC))
+    para_center(doc, "CHAITANYA ENGINEERING COLLEGE",
+                bold=True, size=13, color=RGBColor(0x00, 0x00, 0xCC))
+    para_center(doc, "(APPROVED BY AICTE & AFFILIATED TO JNTU GURAJADA, VIZIANAGARAM)",
+                size=10)
     sep(doc)
-    para_center(doc,
-        "ZENTHIQA: DEEP LEARNING MICROSERVICES FOR\nE-COMMERCE CUSTOMER ANALYTICS",
-        bold=True, size=16)
-    sep(doc); sep(doc)
-    para_center(doc,
-        "Submitted in partial fulfillment of the requirements for the award of the degree of",
-        size=12)
-    sep(doc)
-    para_center(doc, "BACHELOR OF TECHNOLOGY", bold=True, size=13)
-    para_center(doc, "in", size=12)
-    para_center(doc, "ARTIFICIAL INTELLIGENCE AND DATA SCIENCE", bold=True, size=13)
-    sep(doc); sep(doc)
-    para_center(doc, "Submitted by:", bold=True, size=12)
-    para_center(doc, "Gudabandi Nithin Kumar          23L61A5418  (Team Leader)", size=12)
-    para_center(doc, "Buravelli Pardhasaradhi          23L61A5408", size=12)
-    para_center(doc, "Pechetti Devendra Venkata Sai   24L65A5406", size=12)
-    para_center(doc, "Mantri Umadevi                   23L61A5425", size=12)
-    sep(doc)
-    para_center(doc, "Under the Guidance of:", bold=True, size=12)
-    para_center(doc, "Mrs. P. Gayatri", bold=True, size=12)
-    para_center(doc, "Assistant Professor, Department of AI & DS", size=12)
-    sep(doc)
-    para_center(doc, "Academic Year: 2026 – 2027", bold=True, size=12)
+    para_center(doc, "2026 – 2027", bold=True, size=12)
     doc.add_page_break()
 
     # ── BONAFIDE CERTIFICATE ──────────────────────────────────────────────────
-    start_cec_section(doc)
+    # Reference: college name + approval text at top, logo centered large,
+    # BONAFIDE CERTIFICATE bold centered, body text, two-column signatures
+    # (Project Guide left, Head of Department right), External Examiner below standalone.
+    # No section header table — just plain text + logo on this page.
+    para_center(doc, "CHAITANYA ENGINEERING COLLEGE", bold=True, size=13)
+    para_center(doc,
+        "(Approved by AICTE, Affiliated to JNTU GURAJADA, VIZIANAGARAM)", size=10)
+    sep(doc)
+    if os.path.exists('college_logo.jpg'):
+        doc.add_picture('college_logo.jpg', width=Inches(2.2))
+        doc.paragraphs[-1].alignment = 1
+    sep(doc)
     para_center(doc, "BONAFIDE CERTIFICATE", bold=True, size=14)
     sep(doc)
     para(doc,
-        'This is to certify that the project work titled '
+        'This is to certify that the project titled '
         '"ZENTHIQA: DEEP LEARNING MICROSERVICES FOR E-COMMERCE CUSTOMER ANALYTICS" '
         'is a Bonafide work carried out by '
         'G. Nithin Kumar (23L61A5418), B. Pardhasaradhi (23L61A5408), '
         'P. Devendra Venkata Sai (24L65A5406), M. Umadevi (23L61A5425) '
         'as part of the IV B.Tech, II Semester curriculum in '
         'Artificial Intelligence and Data Science during the academic year 2026–2027.')
-    sep(doc); sep(doc)
+    sep(doc); sep(doc); sep(doc)
 
-    # Signature table
-    sig = doc.add_table(rows=1, cols=2)
+    # Two-column borderless signature layout
+    sig = doc.add_table(rows=2, cols=2)
     sig.style = 'Table Grid'
-    # Guide
-    g = sig.rows[0].cells[0]
-    for txt, bold in [("Project Guide", True), ("Mrs. P. Gayatri", True),
-                      ("Assistant Professor", False),
-                      ("Department of AI & DS", False),
+    remove_table_borders_local(sig)
+    # Row 0: signature labels
+    sig.rows[0].cells[0].paragraphs[0].add_run("Project Guide").bold = True
+    sig.rows[0].cells[0].paragraphs[0].runs[0].font.size = Pt(11)
+    sig.rows[0].cells[1].paragraphs[0].add_run("Head of Department").bold = True
+    sig.rows[0].cells[1].paragraphs[0].runs[0].font.size = Pt(11)
+    # Row 1: name + details
+    for txt, bold in [("Mrs. P. Gayatri,", True),
+                      ("Assistant Professor,", False),
+                      ("Department of AI & DS,", False),
                       ("Chaitanya Engineering College", False)]:
-        p = g.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p = sig.rows[1].cells[0].add_paragraph()
         r = p.add_run(txt); r.bold = bold; r.font.size = Pt(11)
-    # HOD
-    h_cell = sig.rows[0].cells[1]
-    for txt, bold in [("Head of Department", True), ("Dr. K.N.S. Lakshmi", True),
-                      ("Professor & HOD", False),
-                      ("Department of AI", False),
+    for txt, bold in [("Dr. K.N.S. Lakshmi,", True),
+                      ("Professor & HOD,", False),
+                      ("Department of AI,", False),
                       ("Chaitanya Engineering College", False)]:
-        p = h_cell.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p = sig.rows[1].cells[1].add_paragraph()
         r = p.add_run(txt); r.bold = bold; r.font.size = Pt(11)
     sep(doc); sep(doc)
-    # External examiner line
-    ext = doc.add_table(rows=1, cols=1)
-    ext.style = 'Table Grid'
-    p = ext.rows[0].cells[0].add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    r = p.add_run("External Examiner"); r.bold = True; r.font.size = Pt(11)
+    # External examiner — standalone left
+    ext_p = doc.add_paragraph()
+    ext_r = ext_p.add_run("External Examiner")
+    ext_r.bold = True; ext_r.font.size = Pt(11)
+    ext_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     doc.add_page_break()
 
     # ── DECLARATION ───────────────────────────────────────────────────────────
-    # Still within CEC-header section (continues from Bonafide Certificate)
+    # Reference: CEC letterhead (logo+name+address) in page header,
+    # DECLARATION bold centered, body text justified, names RIGHT-ALIGNED at bottom.
+    start_cec_section(doc)
     para_center(doc, "DECLARATION", bold=True, size=14)
     sep(doc)
     para(doc,
@@ -312,20 +343,27 @@ def build():
         'for the award of the degree Bachelor of Technology in Artificial Intelligence '
         'and Data Science. This entire project is done with the best of our knowledge '
         'and is not submitted to any University for the award of degree.')
-    sep(doc); sep(doc)
-    para_center(doc, "GUDABANDI NITHIN KUMAR           : 23L61A5418", size=12)
-    para_center(doc, "BURAVELLI PARDHASARADHI          : 23L61A5408", size=12)
-    para_center(doc, "PECHETTI DEVENDRA VENKATA SAI    : 24L65A5406", size=12)
-    para_center(doc, "MANTRI UMADEVI                   : 23L61A5425", size=12)
+    sep(doc); sep(doc); sep(doc)
+    # Names right-aligned — matching the reference
+    for line in [
+        "GUDABANDI NITHIN KUMAR          : 23L61A5418",
+        "BURAVELLI PARDHASARADHI         : 23L61A5408",
+        "PECHETTI DEVENDRA VENKATA SAI   : 24L65A5406",
+        "MANTRI UMADEVI                  : 23L61A5425",
+    ]:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        r = p.add_run(line); r.bold = True; r.font.size = Pt(12); r.font.name = "Times New Roman"
     doc.add_page_break()
-    end_cec_section(doc)   # back to normal (no special header)
 
     # ── ACKNOWLEDGEMENT ───────────────────────────────────────────────────────
-    heading(doc, "ACKNOWLEDGEMENT", level=1, center=True)
+    # Reference: CEC letterhead in page header (same section), ACKNOWLEDGEMENT centered,
+    # body paragraphs justified, names right-aligned at bottom.
+    para_center(doc, "ACKNOWLEDGEMENT", bold=True, size=14)
     sep(doc)
     para(doc, "With great solemnity and sincerity, we express our deepest sense of gratitude and pay our sincere thanks to our Project guide Mrs. P. Gayatri, Assistant Professor, Department of Artificial Intelligence and Data Science, Chaitanya Engineering College, who evinced keen interest in our efforts and provided her invaluable guidance throughout our project work. Her constant encouragement, constructive feedback, and patient mentorship were fundamental to the success of this project.")
     sep(doc)
-    para(doc, "We thank our Dr. K.N.S Lakshmi, Professor, Head of the Department of CSE-Artificial Intelligence, who helped us to complete our project work in a truthful and systematic manner, and who consistently motivated us to aim for technical excellence.")
+    para(doc, "We thank our Dr. K.N.S Lakshmi, Professor, Head of the Department of Artificial Intelligence, who helped us to complete our project work in a truthful and systematic manner, and who consistently motivated us to aim for technical excellence.")
     sep(doc)
     para(doc, "We extend our sincere gratitude to our principal Dr. K. Suresh, Ph.D., for his kind attention and valuable guidance throughout this academic programme. His leadership has created an environment of innovation and research that has greatly benefited our project work.")
     sep(doc)
@@ -333,13 +371,19 @@ def build():
     sep(doc)
     para(doc, "We are also deeply thankful to All Staff Members of the Department of Artificial Intelligence and Data Science, for their direct and indirect support in completing this project work through their valuable suggestions and technical guidance.")
     sep(doc)
-    para(doc, "Above all, we acknowledge our profound gratitude to our parents and families, whose moral support, encouragement, and sacrifices have been the greatest driving force throughout our academic journey. This work is a testament to their unwavering belief in us.")
+    para(doc, "Above all, we acknowledge our profound gratitude to our parents and families, whose moral support, encouragement, and sacrifices have been the greatest driving force throughout our academic journey.")
     sep(doc); sep(doc)
-    para_center(doc, "GUDABANDI NITHIN KUMAR           : 23L61A5418", size=12)
-    para_center(doc, "BURAVELLI PARDHASARADHI          : 23L61A5408", size=12)
-    para_center(doc, "PECHETTI DEVENDRA VENKATA SAI    : 24L65A5406", size=12)
-    para_center(doc, "MANTRI UMADEVI                   : 23L61A5425", size=12)
+    for line in [
+        "GUDABANDI NITHIN KUMAR          : 23L61A5418",
+        "BURAVELLI PARDHASARADHI         : 23L61A5408",
+        "PECHETTI DEVENDRA VENKATA SAI   : 24L65A5406",
+        "MANTRI UMADEVI                  : 23L61A5425",
+    ]:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        r = p.add_run(line); r.bold = True; r.font.size = Pt(12); r.font.name = "Times New Roman"
     doc.add_page_break()
+    end_cec_section(doc)   # back to normal (no special header)
 
     # ── ABSTRACT ──────────────────────────────────────────────────────────────
     heading(doc, "ABSTRACT", level=1, center=True)
