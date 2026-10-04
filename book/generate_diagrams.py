@@ -1,4 +1,4 @@
-﻿import matplotlib
+import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -22,7 +22,7 @@ ax.text(7.0, 9.1, "<<Zenthiqa Platform>>", ha="center", fontsize=9, style="itali
 def draw_actor(ax, x, y, label):
     ax.add_patch(plt.Circle((x, y+0.32), 0.18, color="black", fill=False, lw=2))
     ax.plot([x, x], [y+0.14, y-0.28], "k-", lw=2)
-    ax.plot([x-0.28, x+0.28], [y+0.0], "k-", lw=2)
+    ax.plot([x-0.28, x+0.28], [y+0.0, y+0.0], "k-", lw=2)
     ax.plot([x, x-0.22], [y-0.28, y-0.58], "k-", lw=2)
     ax.plot([x, x+0.22], [y-0.28, y-0.58], "k-", lw=2)
     ax.text(x, y-0.80, label, ha="center", va="top", fontsize=9, fontweight="bold")
@@ -56,7 +56,7 @@ for (cx, cy, label) in admin_cases:
     ax.plot([1.5, cx-2.4], [2.2, cy], "k-", lw=0.8)
 
 plt.tight_layout()
-plt.savefig("uml_use_case.jpg", dpi=150, bbox_inches="tight", facecolor="white")
+plt.savefig("uml_use_case.jpg", dpi=300, bbox_inches="tight", facecolor="white")
 plt.close()
 print("use_case done")
 
@@ -102,7 +102,7 @@ ax.annotate("",xy=(9.8,4.0),xytext=(9.8,5.5),arrowprops=dict(arrowstyle="->",lw=
 ax.text(10.4,4.8,"produces",ha="center",fontsize=8,style="italic",color="#555")
 
 plt.tight_layout()
-plt.savefig("uml_class.jpg",dpi=150,bbox_inches="tight",facecolor="white")
+plt.savefig("uml_class.jpg",dpi=300,bbox_inches="tight",facecolor="white")
 plt.close()
 print("class done")
 
@@ -148,7 +148,7 @@ for (fx,tx,y,label,ret) in msgs:
         ax.text((fx+tx)/2,y+0.1,label,ha="center",va="bottom",fontsize=8,color=col)
 
 plt.tight_layout()
-plt.savefig("uml_sequence.jpg",dpi=150,bbox_inches="tight",facecolor="white")
+plt.savefig("uml_sequence.jpg",dpi=300,bbox_inches="tight",facecolor="white")
 plt.close()
 print("sequence done")
 
@@ -184,7 +184,7 @@ for y in [8.0,5.7,3.4]:
     ax.annotate("",xy=(6.5,y-0.25),xytext=(6.5,y),arrowprops=dict(arrowstyle="<->",color="black",lw=2.5))
 
 plt.tight_layout()
-plt.savefig("uml_block.jpg",dpi=150,bbox_inches="tight",facecolor="white")
+plt.savefig("uml_block.jpg",dpi=300,bbox_inches="tight",facecolor="white")
 plt.close()
 print("block done")
 print("ALL diagrams generated.")

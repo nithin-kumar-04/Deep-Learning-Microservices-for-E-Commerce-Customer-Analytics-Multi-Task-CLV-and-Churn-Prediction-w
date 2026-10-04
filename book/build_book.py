@@ -19,8 +19,8 @@ from docx.oxml import OxmlElement
 # HELPER FUNCTIONS
 # ──────────────────────────────────────────────────────────────────────────────
 
-def set_page_margins(doc, top=1.0, bottom=1.0, left=1.25, right=1.0):
-    s = doc.sections[0]
+def set_page_margins(doc_or_section, top=1.0, bottom=1.0, left=1.25, right=1.0):
+    s = doc_or_section.sections[-1] if hasattr(doc_or_section, 'sections') else doc_or_section
     s.top_margin    = Inches(top)
     s.bottom_margin = Inches(bottom)
     s.left_margin   = Inches(left)
@@ -137,14 +137,13 @@ def remove_table_borders_local(table):
 
 def _fill_cec_header_section(header):
     """Fill a Word header object with the CEC letterhead (logo + college info)."""
-    # Clear any existing default paragraph
     for p in header.paragraphs:
         p.clear()
 
-    # Build a borderless 2-column table inside the header
-    t = header.add_table(rows=1, cols=2, width=Inches(6.5))
-    # Remove borders
     from docx.oxml import OxmlElement as OE
+
+    # Borderless 2-column table: left=logo, right=college text
+    t = header.add_table(rows=1, cols=2, width=Inches(6.5))
     tbl = t._tbl
     tblPr = tbl.find(qn('w:tblPr'))
     if tblPr is None:
@@ -157,40 +156,44 @@ def _fill_cec_header_section(header):
         tblBdr.append(bel)
     tblPr.append(tblBdr)
 
-    # Left cell: logo
+    # Left cell: logo (small, matching reference ~0.9")
     left = t.rows[0].cells[0]
-    left.width = Inches(1.4)
+    left.width = Inches(1.1)
     lp = left.paragraphs[0]
     lp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    lp.paragraph_format.space_before = Pt(0)
+    lp.paragraph_format.space_after  = Pt(0)
     if os.path.exists('college_logo.jpg'):
-        lp.add_run().add_picture('college_logo.jpg', width=Inches(1.2))
+        lp.add_run().add_picture('college_logo.jpg', width=Inches(0.9))
 
-    # Right cell: college name + address
+    # Right cell: college name + address — all LEFT-aligned, matching reference
     right = t.rows[0].cells[1]
+
+    # Line 1: College name (red bold)
     p0 = right.paragraphs[0]
-    p0.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p0.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    p0.paragraph_format.space_before = Pt(0)
+    p0.paragraph_format.space_after  = Pt(0)
     r0 = p0.add_run("CHAITANYA ENGINEERING COLLEGE")
-    r0.bold = True; r0.font.size = Pt(13); r0.font.name = "Times New Roman"
+    r0.bold = True; r0.font.size = Pt(12); r0.font.name = "Times New Roman"
     r0.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
 
-    def hline(text, size=8.5):
+    def hline(text, size=8, bold=False):
         ph = right.add_paragraph()
-        ph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        ph.alignment = WD_ALIGN_PARAGRAPH.LEFT
         ph.paragraph_format.space_before = Pt(0)
         ph.paragraph_format.space_after  = Pt(0)
         rh = ph.add_run(text)
-        rh.font.size = Pt(size); rh.font.name = "Times New Roman"
+        rh.font.size = Pt(size); rh.font.name = "Times New Roman"; rh.bold = bold
 
     hline("Approved by AICTE - New Delhi, Accredited by NAAC, Affiliated to JNTU-GURAJADA")
-    hline("Chaitanya Valley, Kommadi, Madhurawada, Visakhapatnam, Andhra Pradesh - 530048")
-    hline("www.cec.ac.in")
-    hline("Mail ID: principal@cec.ac.in          Phone Number: 9949993477")
+    hline("Chaitanya Valley, Kommadi, Madhurawada, Visakhapatnam, Andhra Pradesh - 530048  www.cec.ac.in")
+    hline("Mail ID: principal@cec.ac.in                         Phone Number: 9949993477")
 
-    # Horizontal rule after the header table (add to doc body; not possible in
-    # header directly, so we add a thin bottom-bordered paragraph)
+    # Thin horizontal rule under the header
     hp = header.add_paragraph()
-    hp.paragraph_format.space_before = Pt(2)
-    hp.paragraph_format.space_after  = Pt(2)
+    hp.paragraph_format.space_before = Pt(1)
+    hp.paragraph_format.space_after  = Pt(0)
     pPr = hp._p.get_or_add_pPr()
     pBdr = OE('w:pBdr')
     bot  = OE('w:bottom')
@@ -222,7 +225,41 @@ def end_cec_section(doc):
     for p in section.header.paragraphs:
         p.clear()
 
-
+def add_footer_page_number(section, fmt=None, start=None):
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    
+    sectPr = section._sectPr
+    pgNumType = sectPr.find(qn('w:pgNumType'))
+    if pgNumType is None:
+        pgNumType = OxmlElement('w:pgNumType')
+        sectPr.append(pgNumType)
+    if fmt is not None:
+        pgNumType.set(qn('w:fmt'), fmt)
+    if start is not None:
+        pgNumType.set(qn('w:start'), str(start))
+        
+    footer = section.footer
+    footer.is_linked_to_previous = False
+    p = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.clear()
+    
+    run = p.add_run()
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = "PAGE"
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'separate')
+    fldChar3 = OxmlElement('w:fldChar')
+    fldChar3.set(qn('w:fldCharType'), 'end')
+    
+    run._r.append(fldChar1)
+    run._r.append(instrText)
+    run._r.append(fldChar2)
+    run._r.append(fldChar3)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # MAIN BUILDER
@@ -271,9 +308,13 @@ def build():
     para_center(doc, "(APPROVED BY AICTE & AFFILIATED TO JNTU GURAJADA, VIZIANAGARAM)",
                 size=10)
     para_center(doc, "2026 – 2027", bold=True, size=12)
-    doc.add_page_break()
+    # End of title page - it has no page number footer by default
 
     # ── BONAFIDE CERTIFICATE ──────────────────────────────────────────────────
+    doc.add_section()
+    set_page_margins(doc)
+    add_footer_page_number(doc.sections[-1], fmt="lowerRoman", start=1)
+    
     para_center(doc, "CHAITANYA ENGINEERING COLLEGE", bold=True, size=13)
     para_center(doc,
         "(Approved by AICTE, Affiliated to JNTU GURAJADA, VIZIANAGARAM)", size=10)
@@ -315,10 +356,10 @@ def build():
     ext_r = ext_p.add_run("External Examiner")
     ext_r.bold = True; ext_r.font.size = Pt(11)
     ext_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    doc.add_page_break()
 
     # ── DECLARATION ───────────────────────────────────────────────────────────
     start_cec_section(doc)
+    add_footer_page_number(doc.sections[-1], fmt="lowerRoman") # Continue Roman numbering
     para_center(doc, "DECLARATION", bold=True, size=14)
     sep(doc)
     para(doc,
@@ -363,8 +404,9 @@ def build():
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         r = p.add_run(line); r.bold = True; r.font.size = Pt(12); r.font.name = "Times New Roman"
-    doc.add_page_break()
+    
     end_cec_section(doc)
+    add_footer_page_number(doc.sections[-1], fmt="lowerRoman") # Continue Roman numbering
 
     # ── ABSTRACT ──────────────────────────────────────────────────────────────
     heading(doc, "ABSTRACT", level=1, center=True)
@@ -505,9 +547,12 @@ def build():
         row[1].paragraphs[0].add_run(fpage).font.size = Pt(11)
         row[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
     doc.add_paragraph()
-    doc.add_page_break()
 
     # ── CHAPTER 1: INTRODUCTION ───────────────────────────────────────────────
+    doc.add_section()
+    set_page_margins(doc)
+    add_footer_page_number(doc.sections[-1], fmt="decimal", start=1)
+    
     heading(doc, "CHAPTER 1: INTRODUCTION", level=1)
 
     heading(doc, "1.1 Introduction", level=2)
