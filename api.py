@@ -175,7 +175,7 @@ def load_artifacts():
             
             mtl_data['Segment'] = mtl_data['Cluster'].map(segment_names)
             
-            global segment_data_cache
+
             segment_data_cache = {
                 "summary": mtl_data.groupby('Segment').agg(
                     count=('CustomerID', 'count'),
@@ -196,7 +196,7 @@ def load_artifacts():
             }
             
             # FEATURE 2: MACRO BUSINESS FORECASTING
-            global business_overview_cache
+
             df['InvoiceDate'] = pd.to_datetime(df['InvoiceDate'])
             df['Month'] = df['InvoiceDate'].dt.to_period('M').dt.to_timestamp()
             monthly_revenue = df.groupby('Month')['TotalSales'].sum().reset_index()
@@ -214,7 +214,7 @@ def load_artifacts():
             }
             
             # FEATURE 3: PRODUCT ANALYTICS
-            global product_analytics_cache
+
             top_products = df.groupby(['StockCode', 'Description']).agg(
                 revenue=('TotalSales', 'sum'),
                 quantity=('Quantity', 'sum'),
