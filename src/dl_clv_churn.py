@@ -1,11 +1,13 @@
+import os
+import pickle
+from datetime import timedelta
+
 import pandas as pd
-import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
 from sklearn.preprocessing import StandardScaler
-import os
-from datetime import timedelta
+from torch.utils.data import DataLoader, Dataset
+
 
 class CustomerDataset(Dataset):
     def __init__(self, features, clv_labels, churn_labels):
@@ -160,8 +162,6 @@ def precompute_clv_churn(model, customer_ids, X, mtl_data):
     df_preds['Segment_Badge'] = df_preds.apply(assign_segment, axis=1)
     
     return df_preds
-
-import pickle
 
 if __name__ == "__main__":
     df = pd.read_parquet("data/cleaned_retail.parquet")

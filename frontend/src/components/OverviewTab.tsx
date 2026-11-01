@@ -56,7 +56,7 @@ export default function OverviewTab() {
                 <YAxis stroke="#9ca3af" tickFormatter={(value) => `£${value/1000}k`} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#f3f4f6' }}
-                  formatter={(value: number) => [`£${value.toLocaleString()}`, 'Revenue']}
+                  formatter={(value) => [`£${Number(value ?? 0).toLocaleString()}`, 'Revenue'] as [string, string]}
                 />
                 <Line type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={3} dot={{ r: 4, fill: "#6366f1" }} activeDot={{ r: 8 }} />
               </LineChart>

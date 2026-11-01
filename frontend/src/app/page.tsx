@@ -17,7 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { predictCLV, explainCLV, getRecommendations, checkHealth, getAtRiskCustomers, batchPredict, getCustomerRFM, generateEmail, CLVPrediction, CLVExplanation, Recommendation } from "@/lib/api";
+import { predictCLV, explainCLV, getRecommendations, checkHealth, getAtRiskCustomers, batchPredict, getCustomerRFM, generateEmail, CLVPrediction, CLVExplanation, Recommendation, AtRiskCustomer } from "@/lib/api";
+import axios from 'axios';
 import { User, Activity, PoundSterling, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download, Loader2, FileText, Mail } from "lucide-react";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -43,7 +44,7 @@ export default function Dashboard() {
   const [isSystemOnline, setIsSystemOnline] = useState<boolean>(true);
   
   // At-Risk State
-  const [highRiskCustomers, setHighRiskCustomers] = useState<any[]>([]);
+  const [highRiskCustomers, setHighRiskCustomers] = useState<AtRiskCustomer[]>([]);
   const [atRiskLoading, setAtRiskLoading] = useState(false);
   
   // Batch State
@@ -124,8 +125,8 @@ export default function Dashboard() {
       try {
         const recs = await getRecommendations(Number(cId));
         setRecommendations(recs.recommendations);
-      } catch (err: any) {
-        if (err?.response?.status === 404) {
+      } catch (err: unknown) {
+        if (axios.isAxiosError(err) && err.response?.status === 404) {
           setRecError("Customer ID not found in the product interaction database.");
         }
         setRecommendations([]);
@@ -209,7 +210,7 @@ export default function Dashboard() {
               <TrendingUp className="w-4 h-4 text-white" />
             </div>
             <h1 className="font-bold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-purple-500">
-              Zenthiqa
+              Velora
             </h1>
           </div>
           <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground">

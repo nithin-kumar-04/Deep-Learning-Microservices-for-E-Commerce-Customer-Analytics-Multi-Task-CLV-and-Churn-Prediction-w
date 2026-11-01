@@ -1,30 +1,49 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Security, Depends, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import APIKeyHeader
-from pydantic import BaseModel
-import torch
-import pandas as pd
-import numpy as np
-import pickle
 import io
+import logging
 import os
-import boto3
+import pickle
+import secrets
+import time
 from functools import lru_cache
 from itertools import combinations
 from math import factorial
+
+import boto3
+import numpy as np
+import pandas as pd
+import torch
+from fastapi import Depends, FastAPI, File, HTTPException, Request, Security, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import Response
+from fastapi.security import APIKeyHeader
+from pydantic import BaseModel
 
 # Import model architectures
 from src.dl_clv_churn import MultiTaskCLVChurn
 from src.dl_recommender import NCFRecommender
 
-app = FastAPI(title="E-Commerce ML API", version="1.0")
+APP_NAME = "Velora"
+APP_VERSION = "1.1.0"
+DEFAULT_API_KEY = "default-secret-key"
+
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
+logger = logging.getLogger("velora.api")
+
+app = FastAPI(
+    title=f"{APP_NAME} API",
+    version=APP_VERSION,
+    description="Customer lifetime value, churn, segmentation and recommendation service.",
+)
 
 # Security
-API_KEY = os.environ.get("API_KEY", "default-secret-key")
+API_KEY = os.environ.get("API_KEY", DEFAULT_API_KEY)
+if API_KEY == DEFAULT_API_KEY:
+    logger.warning("API_KEY is not set; using the development default. Set API_KEY before deploying.")
 api_key_header = APIKeyHeader(name="X-API-Key")
 
 def get_api_key(api_key: str = Security(api_key_header)):
-    if api_key != API_KEY:
+    if not secrets.compare_digest(api_key, API_KEY):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Could not validate credentials")
     return api_key
 
@@ -39,6 +58,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# GET endpoints whose payloads are precomputed at startup and rarely change.
+CACHEABLE_PATHS = {"/at_risk_customers", "/segments", "/business_overview", "/product_analytics"}
+START_TIME = time.time()
+
+@app.middleware("http")
+async def observability_middleware(request: Request, call_next):
+    """Add a timing header to every response and cache headers to read-only analytics."""
+    started = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.1f}"
+    if request.method == "GET" and response.status_code == 200:
+        if request.url.path in CACHEABLE_PATHS or request.url.path.startswith("/customer/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=300")
+    return response
 
 # Globals for loaded artifacts
 clv_model = None
@@ -233,10 +269,26 @@ def load_artifacts():
         except Exception as e:
             print("Failed to precompute data:", e)
 
+@app.get("/")
+def root():
+    """Service metadata for quick discovery."""
+    return {"service": f"{APP_NAME} API", "version": APP_VERSION, "docs": "/docs"}
+
 @app.get("/health")
 def health_check():
-    """Health check for AWS Load Balancer."""
-    return {"status": "healthy"}
+    """Health check for load balancers and the dashboard status indicator."""
+    return {
+        "status": "healthy",
+        "service": f"{APP_NAME} API",
+        "version": APP_VERSION,
+        "models_loaded": all(model is not None for model in (clv_model, rec_model, scaler)),
+        "uptime_seconds": round(time.time() - START_TIME, 1),
+    }
+
+@app.get("/version")
+def version():
+    """Returns the deployed application version."""
+    return {"name": APP_NAME, "version": APP_VERSION}
 
 class CLVRequest(BaseModel):
     recency: float
@@ -392,7 +444,6 @@ async def batch_predict(file: UploadFile = File(...), api_key: str = Depends(get
     
     stream = io.StringIO()
     df.to_csv(stream, index=False)
-    from fastapi.responses import Response
     return Response(
         content=stream.getvalue(),
         media_type="text/csv",
@@ -448,6 +499,6 @@ Based on your past purchases, we think you'd absolutely love these:
 Use code WINBACK20 for 20% off your next order.
 
 Best,
-The Zenthiqa Team
+The {APP_NAME} Team
 """
     return {"email_template": template}

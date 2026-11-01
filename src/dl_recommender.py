@@ -1,9 +1,11 @@
-import pandas as pd
+import os
+
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
-import os
+
 
 class EcommerceDataset(Dataset):
     def __init__(self, user_ids, item_ids, labels):

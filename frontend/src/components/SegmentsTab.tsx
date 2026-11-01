@@ -44,7 +44,7 @@ export default function SegmentsTab() {
                 <Tooltip 
                   cursor={{ strokeDasharray: '3 3' }}
                   contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#f3f4f6' }}
-                  formatter={(value: any, name: string) => [Number(value).toFixed(2), name]}
+                  formatter={(value, name) => [Number(value ?? 0).toFixed(2), String(name ?? '')] as [string, string]}
                 />
                 <Scatter name="Customers" data={data.scatter} fill="#8884d8">
                   {data.scatter.map((entry: any, index: number) => (
