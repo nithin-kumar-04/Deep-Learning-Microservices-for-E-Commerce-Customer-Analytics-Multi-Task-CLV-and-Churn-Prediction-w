@@ -114,6 +114,9 @@ This builds the API image (`Dockerfile.api`) and mounts `artifacts/` and `data/`
 
 Infrastructure is defined in `terraform/main.tf`: an EC2 instance for the API and an S3 bucket for static frontend hosting.
 
+Terraform is not bundled with this repository. Install the CLI first
+(https://developer.hashicorp.com/terraform/install), then:
+
 ```bash
 cd terraform
 terraform init
