@@ -31,22 +31,32 @@ jobs:
       - name: Test
         run: |
           set -o pipefail
-          pytest -x -vv --junitxml=junit.xml 2>&1 | tee pytest.log
+          python -m pytest -x -vv --junitxml=junit.xml 2>&1 | tee pytest.log
 
       - name: Annotate failures
         if: failure()
         run: |
           python - <<'PY'
           import glob
+          import pathlib
           import xml.etree.ElementTree as ET
+
+
+          def emit(message: str) -> None:
+              message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::error::{message[:1000]}")
+
+
+          log = pathlib.Path("pytest.log")
+          if log.is_file():
+              for line in log.read_text(errors="replace").strip().splitlines()[:30]:
+                  emit(f"PYTEST: {line}")
 
           for path in glob.glob("junit.xml"):
               for case in ET.parse(path).iter("testcase"):
                   for node in list(case.iter("failure")) + list(case.iter("error")):
                       text = (node.text or node.get("message") or "").strip()
-                      tail = text[-800:].replace("\n", " | ")
-                      name = f"{case.get('classname')}::{case.get('name')}"
-                      print(f"::error title={name}::{tail}")
+                      emit(f"{case.get('classname')}::{case.get('name')} :: {text[-800:]}")
           PY
 
       - name: Upload pytest log
