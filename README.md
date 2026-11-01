@@ -67,6 +67,8 @@ source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+> **Windows note:** if this repository lives under a long path (deep folder nesting), create the virtualenv on a short path instead, e.g. `python -m venv C:\venvs\ecommerce`. Otherwise scikit-learn's compiled modules can fail to load with a "filename or extension is too long" error.
+
 ### 3. Run the pipeline
 
 ```bash
