@@ -29,7 +29,35 @@ jobs:
         run: ruff check .
 
       - name: Test
-        run: pytest
+        run: |
+          set -o pipefail
+          pytest -x -vv --junitxml=junit.xml 2>&1 | tee pytest.log
+
+      - name: Annotate failures
+        if: failure()
+        run: |
+          python - <<'PY'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          for path in glob.glob("junit.xml"):
+              for case in ET.parse(path).iter("testcase"):
+                  for node in list(case.iter("failure")) + list(case.iter("error")):
+                      text = (node.text or node.get("message") or "").strip()
+                      tail = text[-800:].replace("\n", " | ")
+                      name = f"{case.get('classname')}::{case.get('name')}"
+                      print(f"::error title={name}::{tail}")
+          PY
+
+      - name: Upload pytest log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-log
+          path: |
+            pytest.log
+            junit.xml
+          if-no-files-found: ignore
 
   frontend:
     name: Dashboard (lint + build)
