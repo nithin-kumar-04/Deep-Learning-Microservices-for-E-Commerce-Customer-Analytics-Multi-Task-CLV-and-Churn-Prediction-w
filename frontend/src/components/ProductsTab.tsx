@@ -1,35 +1,58 @@
-import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getProductAnalytics } from '@/lib/api';
-import { Loader2, Package } from 'lucide-react';
+'use client';
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/ErrorState';
+import { getProductAnalytics, type ProductAnalytics } from '@/lib/api';
+import { useApiData } from '@/lib/use-api-data';
+import { Package } from 'lucide-react';
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
+
+function ProductsSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-label="Loading product analytics">
+      <div className="rounded-xl border border-border p-4">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <Skeleton key={index} className="mb-2 h-9 w-full last:mb-0" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function ProductsTab() {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, loading, error, retry } = useApiData<ProductAnalytics>(
+    'product-analytics',
+    getProductAnalytics,
+  );
 
-  useEffect(() => {
-    getProductAnalytics().then(setData).catch(console.error).finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
-    return <div className="flex h-64 items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>;
+  if (loading && !data) return <ProductsSkeleton />;
+  if (error && !data) return <ErrorState message={error} onRetry={retry} />;
+  if (!data) {
+    return <ErrorState title="No product data" message="The API returned an empty product report." onRetry={retry} />;
   }
-  if (!data) return <div>Failed to load product analytics.</div>;
 
   return (
     <div className="space-y-6">
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-foreground flex items-center gap-2">
-            <Package className="w-5 h-5 text-indigo-400" />
+            <Package className="w-5 h-5 text-indigo-500" aria-hidden="true" />
             Top Selling Products
           </CardTitle>
           <CardDescription>Highest grossing items across all customers.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border border-border">
-            <Table>
+          <div className="overflow-x-auto rounded-md border border-border">
+            <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow className="border-border hover:bg-muted/50">
                   <TableHead className="text-muted-foreground w-24">Stock Code</TableHead>
@@ -40,14 +63,20 @@ export default function ProductsTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.top_products.map((p: any) => (
-                  <TableRow key={p.stock_code} className="border-border hover:bg-muted/50">
-                    <TableCell className="font-medium text-foreground">{p.stock_code}</TableCell>
-                    <TableCell className="text-foreground">{p.description}</TableCell>
-                    <TableCell className="text-right text-foreground">{p.buyers.toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-foreground">{p.quantity.toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-indigo-400 font-medium">
-                      £{p.revenue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits:2})}
+                {data.top_products.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                      No product metrics are available.
+                    </TableCell>
+                  </TableRow>
+                ) : data.top_products.map((product) => (
+                  <TableRow key={product.stock_code} className="border-border hover:bg-muted/50">
+                    <TableCell className="font-medium text-foreground">{product.stock_code}</TableCell>
+                    <TableCell className="text-foreground">{product.description}</TableCell>
+                    <TableCell className="text-right text-foreground">{product.buyers.toLocaleString('en-GB')}</TableCell>
+                    <TableCell className="text-right text-foreground">{product.quantity.toLocaleString('en-GB')}</TableCell>
+                    <TableCell className="text-right text-indigo-500 font-medium">
+                      {formatCurrency(product.revenue)}
                     </TableCell>
                   </TableRow>
                 ))}

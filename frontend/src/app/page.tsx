@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { 
   Card, 
   CardContent, 
@@ -17,14 +18,40 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { predictCLV, explainCLV, getRecommendations, checkHealth, getAtRiskCustomers, batchPredict, getCustomerRFM, generateEmail, CLVPrediction, CLVExplanation, Recommendation, AtRiskCustomer } from "@/lib/api";
+import { predictCLV, explainCLV, getRecommendations, getHealth, getAtRiskCustomers, batchPredict, getCustomerRFM, generateEmail, CLVPrediction, CLVExplanation, Recommendation, AtRiskCustomer, HealthStatus } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/errors";
+import { chartTheme } from "@/lib/chart-theme";
+import { useApiData } from "@/lib/use-api-data";
 import axios from 'axios';
-import { User, Activity, PoundSterling, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download, Loader2, FileText, Mail } from "lucide-react";
+import { User, Activity, PoundSterling, RefreshCw, Upload, AlertTriangle, TrendingUp, Package, BarChart2, ChevronLeft, ChevronRight, Download, Loader2, FileText, Mail, Copy, Check } from "lucide-react";
 import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { ThemeToggle } from "@/components/theme-toggle";
-import SegmentsTab from '@/components/SegmentsTab';
-import OverviewTab from '@/components/OverviewTab';
-import ProductsTab from '@/components/ProductsTab';
+import { Skeleton } from "@/components/ui/skeleton";
+
+const OverviewTab = dynamic(() => import('@/components/OverviewTab'), {
+  ssr: false,
+  loading: () => <TabSkeleton />,
+});
+const SegmentsTab = dynamic(() => import('@/components/SegmentsTab'), {
+  ssr: false,
+  loading: () => <TabSkeleton />,
+});
+const ProductsTab = dynamic(() => import('@/components/ProductsTab'), {
+  ssr: false,
+  loading: () => <TabSkeleton />,
+});
+
+function TabSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+      </div>
+      <Skeleton className="h-96 w-full rounded-xl" />
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [customerId, setCustomerId] = useState<string>("12345");
@@ -41,73 +68,92 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recError, setRecError] = useState<string | null>(null);
-  const [isSystemOnline, setIsSystemOnline] = useState<boolean>(true);
-  
-  // At-Risk State
-  const [highRiskCustomers, setHighRiskCustomers] = useState<AtRiskCustomer[]>([]);
-  const [atRiskLoading, setAtRiskLoading] = useState(false);
+  const [health, setHealth] = useState<{ status: 'checking' | 'online' | 'offline'; version?: string }>({ status: 'checking' });
   
   // Batch State
   const [batchFile, setBatchFile] = useState<File | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchSuccess, setBatchSuccess] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [batchInputKey, setBatchInputKey] = useState(0);
 
   // Email state
   const [emailTemplate, setEmailTemplate] = useState<string | null>(null);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailCopied, setEmailCopied] = useState(false);
 
-  const handleGenerateEmail = async () => {
-    setEmailLoading(true);
-    setEmailError(null);
-    try {
-      const res = await generateEmail(customerId);
-      setEmailTemplate(res.email_template);
-    } catch (e) {
-      console.error(e);
-      setEmailError("Failed to generate email. Customer may not exist.");
-    } finally {
-      setEmailLoading(false);
-    }
-  };
+  useEffect(() => {
+    let cancelled = false;
 
-  React.useEffect(() => {
     const pollHealth = async () => {
-      const isOnline = await checkHealth();
-      setIsSystemOnline(isOnline);
-    };
-    pollHealth();
-    const intervalId = setInterval(pollHealth, 30000);
-    return () => clearInterval(intervalId);
-  }, []);
-
-  React.useEffect(() => {
-    const fetchAtRisk = async () => {
+      if (document.visibilityState === 'hidden') return;
       try {
-        setAtRiskLoading(true);
-        const data = await getAtRiskCustomers();
-        setHighRiskCustomers(data);
-      } catch (err) {
-        console.error("Failed to fetch at risk customers", err);
-      } finally {
-        setAtRiskLoading(false);
+        const data: HealthStatus = await getHealth();
+        if (!cancelled) {
+          setHealth({ status: 'online', version: data.version });
+        }
+      } catch {
+        if (!cancelled) {
+          setHealth((previous) => ({ status: 'offline', version: previous.version }));
+        }
       }
     };
-    fetchAtRisk();
+
+    void pollHealth();
+    const intervalId = window.setInterval(pollHealth, 30_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void pollHealth();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
+  const atRisk = useApiData<AtRiskCustomer[]>(
+    'at-risk-customers',
+    getAtRiskCustomers,
+    { ttlMs: 60_000 },
+  );
+  const highRiskCustomers = atRisk.data ?? [];
+
+  useEffect(() => {
+    if (!emailCopied) return;
+    const timeoutId = window.setTimeout(() => setEmailCopied(false), 2000);
+    return () => window.clearTimeout(timeoutId);
+  }, [emailCopied]);
+
+  const escapeCsvValue = (value: string | number) => {
+    const text = String(value);
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+
   const exportToCSV = () => {
-    const headers = ["Customer ID,Churn Risk (%),Predicted CLV (£),Recency,Frequency,Status"];
-    const rows = highRiskCustomers.map(c => 
-      `${c.id},${(c.churnRisk * 100).toFixed(1)},${c.clv.toFixed(2)},${c.recency},${c.freq},${c.status}`
-    );
-    const csvContent = "data:text/csv;charset=utf-8," + headers.concat(rows).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "high_risk_customers.csv");
+    if (highRiskCustomers.length === 0) return;
+    const headers = ['Customer ID', 'Churn Risk (%)', 'Predicted CLV (£)', 'Recency (Days)', 'Frequency (Orders)', 'Status'];
+    const rows = highRiskCustomers.map((customer) => [
+      customer.id,
+      (customer.churnRisk * 100).toFixed(1),
+      customer.clv.toFixed(2),
+      customer.recency,
+      customer.freq,
+      customer.status,
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsvValue).join(',')).join('\r\n');
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'high_risk_customers.csv';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
   };
 
   const handlePredict = async (r = recency, f = frequency, m = monetary, cId = customerId) => {
@@ -121,40 +167,54 @@ export default function Dashboard() {
       ]);
       setPrediction(pred);
       setExplanation(expl);
-      
+
+      const numericCustomerId = Number(cId);
+      if (!Number.isFinite(numericCustomerId) || numericCustomerId <= 0) {
+        setRecommendations([]);
+        setRecError('Enter a valid customer ID to load product recommendations.');
+        return;
+      }
+
       try {
-        const recs = await getRecommendations(Number(cId));
+        const recs = await getRecommendations(numericCustomerId);
         setRecommendations(recs.recommendations);
-      } catch (err: unknown) {
+      } catch (err) {
         if (axios.isAxiosError(err) && err.response?.status === 404) {
           setRecError("Customer ID not found in the product interaction database.");
+        } else {
+          setRecError(getApiErrorMessage(err, 'Recommendations are temporarily unavailable.'));
         }
         setRecommendations([]);
       }
     } catch (err) {
-      setError("Failed to fetch predictions. Ensure the FastAPI backend is running.");
-      console.error(err);
+      setError(getApiErrorMessage(err, 'Failed to fetch predictions. Ensure the API is running.'));
     } finally {
       setLoading(false);
     }
   };
 
   const loadCustomerProfile = async (cId: string) => {
-    setCustomerId(cId);
+    const trimmedId = cId.trim();
+    if (!/^\d+$/.test(trimmedId)) {
+      setError('Enter a valid numeric customer ID.');
+      return;
+    }
+
+    setCustomerId(trimmedId);
     setLoading(true);
     setError(null);
     setEmailTemplate(null);
     setEmailError(null);
     try {
-      const rfm = await getCustomerRFM(cId);
+      const rfm = await getCustomerRFM(trimmedId);
       setRecency(rfm.recency);
       setFrequency(rfm.frequency);
       setMonetary(rfm.monetary);
-      await handlePredict(rfm.recency, rfm.frequency, rfm.monetary, cId);
-    } catch (err) {
-      // If customer not found, we don't overwrite sliders, but we still try to predict 
-      // (which will fail for recommendations but work for CLV)
-      await handlePredict(recency, frequency, monetary, cId);
+      await handlePredict(rfm.recency, rfm.frequency, rfm.monetary, trimmedId);
+    } catch {
+      // Keep the current slider values when the customer has no stored RFM
+      // profile, but still score the inputs so the dashboard stays useful.
+      await handlePredict(recency, frequency, monetary, trimmedId);
     } finally {
       setLoading(false);
     }
@@ -171,23 +231,130 @@ export default function Dashboard() {
     setRecency(r);
     setFrequency(f);
     setMonetary(m);
-    handlePredict(r, f, m, presetId);
+    void handlePredict(r, f, m, presetId);
   };
-  
+
+  const parsedCustomerId = Number.parseInt(customerId, 10);
+  const hasValidCustomerId = Number.isFinite(parsedCustomerId) && parsedCustomerId > 0;
+
+  const stepCustomerId = (delta: number) => {
+    if (!hasValidCustomerId) return;
+    void loadCustomerProfile(String(Math.max(1, parsedCustomerId + delta)));
+  };
+
+  const handleGenerateEmail = async () => {
+    const trimmedId = customerId.trim();
+    if (!/^\d+$/.test(trimmedId)) {
+      setEmailError('Enter a valid customer ID first.');
+      return;
+    }
+
+    setEmailLoading(true);
+    setEmailError(null);
+    setEmailTemplate(null);
+    try {
+      const res = await generateEmail(trimmedId);
+      setEmailTemplate(res.email_template);
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        setEmailError('Customer not found. Choose a valid customer ID first.');
+      } else {
+        setEmailError(getApiErrorMessage(err, 'Could not generate the email draft. Please try again.'));
+      }
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleCopyEmail = async () => {
+    if (!emailTemplate) return;
+    try {
+      await navigator.clipboard.writeText(emailTemplate);
+      setEmailCopied(true);
+    } catch {
+      setEmailError('Could not copy the draft automatically. Select the text and copy it manually.');
+    }
+  };
+
+  const resetBatchInput = () => {
+    setBatchInputKey((key) => key + 1);
+  };
+
+  const clearBatchFile = () => {
+    setBatchFile(null);
+    setBatchError(null);
+    setBatchSuccess(null);
+    resetBatchInput();
+  };
+
+  const validateBatchFile = async (file: File): Promise<string | null> => {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      return 'Choose a .csv file.';
+    }
+    if (file.size === 0) {
+      return 'That file is empty. Add rows and try again.';
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      return 'That file is larger than 5 MB. Split it into smaller batches.';
+    }
+
+    const firstLine = (await file.slice(0, 4096).text()).split(/\r?\n/, 1)[0] ?? '';
+    const headers = firstLine
+      .replace(/^\uFEFF/, '')
+      .split(',')
+      .map((header) => header.trim().replace(/^"|"$/g, '').toLowerCase());
+    const required = ['customerid', 'recency', 'frequency', 'monetary'];
+    const missing = required.filter((header) => !headers.includes(header));
+    if (missing.length > 0) {
+      return `Missing required column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}. Expected CustomerID, Recency, Frequency, Monetary.`;
+    }
+    return null;
+  };
+
+  const handleBatchFile = async (file: File | null) => {
+    setBatchError(null);
+    setBatchSuccess(null);
+    if (!file) {
+      setBatchFile(null);
+      return;
+    }
+
+    const validationError = await validateBatchFile(file);
+    if (validationError) {
+      setBatchFile(null);
+      setBatchError(validationError);
+      resetBatchInput();
+      return;
+    }
+    setBatchFile(file);
+  };
+
+  const handleBatchDrop = (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    void handleBatchFile(event.dataTransfer.files?.[0] ?? null);
+  };
+
   const handleBatchSubmit = async () => {
     if (!batchFile) return;
     setBatchLoading(true);
+    setBatchError(null);
+    setBatchSuccess(null);
     try {
       const blob = await batchPredict(batchFile);
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "batch_predictions.csv";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'batch_predictions.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+      setBatchSuccess('Batch scored successfully. Your download should start automatically.');
+      setBatchFile(null);
+      resetBatchInput();
     } catch (err) {
-      alert("Batch processing failed. Check the file format.");
+      setBatchError(getApiErrorMessage(err, 'Batch processing failed. Check the file format and try again.'));
     } finally {
       setBatchLoading(false);
     }
@@ -195,8 +362,8 @@ export default function Dashboard() {
 
   const getChurnBadge = (prob: number) => {
     if (prob > 0.5) return <Badge variant="destructive" className="ml-2">High Risk</Badge>;
-    if (prob > 0.2) return <Badge variant="secondary" className="ml-2 bg-yellow-500/20 text-yellow-500">Medium Risk</Badge>;
-    return <Badge variant="outline" className="ml-2 border-green-500 text-green-500">Low Risk</Badge>;
+    if (prob > 0.2) return <Badge variant="secondary" className="ml-2 bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">Medium Risk</Badge>;
+    return <Badge variant="outline" className="ml-2 border-green-500 text-green-600 dark:text-green-400">Low Risk</Badge>;
   };
 
   return (
@@ -215,11 +382,20 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-3 text-sm font-medium text-muted-foreground">
             <span className="hidden md:inline text-xs border border-border px-3 py-1.5 rounded-full bg-background/50">
-              Demo data: UCI Online Retail, 2010–2011 (v1.0.0)
+              Demo data: UCI Online Retail, 2010–2011{health.version ? ` (v${health.version})` : ''}
             </span>
-            <span className="flex items-center gap-1.5">
-              <Activity className={`w-4 h-4 ${isSystemOnline ? 'text-green-400' : 'text-red-400'}`} /> 
-              {isSystemOnline ? 'System Online' : 'System Offline'}
+            <span className="flex items-center gap-1.5" aria-live="polite">
+              <Activity
+                aria-hidden="true"
+                className={`w-4 h-4 ${
+                  health.status === 'online'
+                    ? 'text-green-500'
+                    : health.status === 'offline'
+                      ? 'text-red-500'
+                      : 'text-amber-500 animate-pulse'
+                }`}
+              />
+              {health.status === 'checking' ? 'Checking…' : health.status === 'online' ? 'System Online' : 'System Offline'}
             </span>
             <ThemeToggle />
           </div>
@@ -286,7 +462,9 @@ export default function Dashboard() {
                         <Button 
                           variant="outline" 
                           size="icon"
-                          onClick={() => loadCustomerProfile(String(Math.max(1, parseInt(customerId) - 1)))}
+                          onClick={() => stepCustomerId(-1)}
+                          disabled={!hasValidCustomerId || parsedCustomerId <= 1}
+                          aria-label="Load previous customer"
                         >
                           <ChevronLeft className="w-4 h-4" />
                         </Button>
@@ -294,18 +472,22 @@ export default function Dashboard() {
                           id="customer-id"
                           value={customerId} 
                           onChange={(e) => setCustomerId(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && loadCustomerProfile(customerId)}
+                          onKeyDown={(e) => e.key === 'Enter' && void loadCustomerProfile(customerId)}
+                          inputMode="numeric"
+                          aria-describedby="customer-id-hint"
                           className="bg-background border-border focus-visible:ring-indigo-500 text-center" 
                         />
                         <Button 
                           variant="outline" 
                           size="icon"
-                          onClick={() => loadCustomerProfile(String(parseInt(customerId) + 1))}
+                          onClick={() => stepCustomerId(1)}
+                          disabled={!hasValidCustomerId}
+                          aria-label="Load next customer"
                         >
                           <ChevronRight className="w-4 h-4" />
                         </Button>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">Press Enter to load profile</p>
+                      <p id="customer-id-hint" className="text-xs text-muted-foreground mt-1">Press Enter to load profile</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -322,7 +504,7 @@ export default function Dashboard() {
                     
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
-                        <label className="font-medium text-foreground">Recency (Days)</label>
+                        <span className="font-medium text-foreground">Recency (Days)</span>
                         <span className="text-indigo-400 font-mono">{recency}</span>
                       </div>
                       <Slider 
@@ -330,13 +512,14 @@ export default function Dashboard() {
                         onValueChange={(v) => setRecency(Array.isArray(v) ? v[0] : (v as number))} 
                         max={365} 
                         step={1} 
+                        labels={["Recency in days"]}
                         className="[&_[role=slider]]:bg-indigo-500"
                       />
                     </div>
 
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
-                        <label className="font-medium text-foreground">Frequency (Orders)</label>
+                        <span className="font-medium text-foreground">Frequency (Orders)</span>
                         <span className="text-indigo-400 font-mono">{frequency}</span>
                       </div>
                       <Slider 
@@ -344,6 +527,7 @@ export default function Dashboard() {
                         onValueChange={(v) => setFrequency(Array.isArray(v) ? v[0] : (v as number))} 
                         max={50} 
                         step={1} 
+                        labels={["Frequency in orders"]}
                         className="[&_[role=slider]]:bg-indigo-500"
                       />
                       {/* Purchase History Timeline Mockup */}
@@ -359,13 +543,16 @@ export default function Dashboard() {
 
                     <div className="space-y-3">
                       <div className="flex justify-between text-sm">
-                        <label className="font-medium text-foreground">Monetary (£)</label>
-                        <span className="text-indigo-400 font-mono">£{monetary.toFixed(2)}</span>
+                        <label htmlFor="monetary" className="font-medium text-foreground">Monetary (£)</label>
+                        <span className="text-indigo-400 font-mono">£{(Number.isFinite(monetary) ? monetary : 0).toFixed(2)}</span>
                       </div>
                       <Input 
+                        id="monetary"
                         type="number" 
-                        value={monetary} 
-                        onChange={(e) => setMonetary(Number(e.target.value))}
+                        min={0}
+                        step="0.01"
+                        value={Number.isFinite(monetary) ? monetary : 0}
+                        onChange={(e) => setMonetary(e.target.value === '' ? 0 : Number(e.target.value))}
                         className="bg-background border-border focus-visible:ring-indigo-500 font-mono"
                       />
                     </div>
@@ -373,7 +560,7 @@ export default function Dashboard() {
                   </CardContent>
                   <CardFooter>
                     <Button 
-                      onClick={() => handlePredict()} 
+                      onClick={() => void handlePredict()} 
                       disabled={loading}
                       className="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-lg shadow-indigo-500/25 transition-all"
                     >
@@ -430,7 +617,8 @@ export default function Dashboard() {
                     <CardContent className="space-y-3">
                       <Progress 
                         value={prediction ? prediction.churn_probability * 100 : 0} 
-                        className={`h-1.5 ${prediction && prediction.churn_probability > 0.5 ? '[&>div]:bg-red-500' : '[&>div]:bg-indigo-500'}`}
+                        aria-label="Predicted churn risk"
+                        className={`[&_[data-slot=progress-track]]:h-1.5 ${prediction && prediction.churn_probability > 0.5 ? '[&_[data-slot=progress-indicator]]:bg-red-500' : '[&_[data-slot=progress-indicator]]:bg-indigo-500'}`}
                       />
                       <p className="text-sm text-muted-foreground">Probability of account going dormant.</p>
                       
@@ -440,7 +628,11 @@ export default function Dashboard() {
                           <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1.5">
                             <Activity className="w-3 h-3 text-indigo-400" /> AI Rationale (SHAP Contributions)
                           </p>
-                          <div className="h-40 w-full mt-4">
+                          <div
+                            className="h-40 w-full mt-4"
+                            role="img"
+                            aria-label="Bar chart of SHAP feature contributions to churn risk"
+                          >
                             <ResponsiveContainer width="100%" height="100%">
                               <BarChart 
                                 layout="vertical" 
@@ -451,14 +643,14 @@ export default function Dashboard() {
                                 ]} 
                                 margin={{ top: 5, right: 30, left: 30, bottom: 5 }}
                               >
-                                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={true} vertical={false} />
-                                <XAxis type="number" stroke="#64748b" fontSize={10} tickFormatter={(val) => `${(val*100).toFixed(0)}%`} />
-                                <YAxis dataKey="name" type="category" stroke="#64748b" fontSize={11} axisLine={false} tickLine={false} />
+                                <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} horizontal={true} vertical={false} />
+                                <XAxis type="number" stroke={chartTheme.axis} fontSize={10} tickFormatter={(val) => `${(val*100).toFixed(0)}%`} />
+                                <YAxis dataKey="name" type="category" stroke={chartTheme.axis} fontSize={11} axisLine={false} tickLine={false} />
                                 <RechartsTooltip 
-                                  cursor={{fill: '#1e293b', opacity: 0.4}}
-                                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px' }}
-                                  itemStyle={{ color: '#f8fafc' }}
-                                  formatter={(val: any) => [`${Number(val) > 0 ? '+' : ''}${(Number(val) * 100).toFixed(1)}%`, 'Effect on Churn Risk']}
+                                  cursor={chartTheme.cursorFill}
+                                  contentStyle={chartTheme.tooltipStyle}
+                                  itemStyle={chartTheme.tooltipItemStyle}
+                                  formatter={(val) => [`${Number(val) > 0 ? '+' : ''}${(Number(val) * 100).toFixed(1)}%`, 'Effect on Churn Risk']}
                                 />
                                 <Bar dataKey="value" radius={[4, 4, 4, 4]}>
                                   {
@@ -467,7 +659,7 @@ export default function Dashboard() {
                                       explanation.contributions.Frequency,
                                       explanation.contributions.Monetary
                                     ].map((val, index) => (
-                                      <Cell key={`cell-${index}`} fill={val > 0 ? '#ef4444' : '#10b981'} />
+                                      <Cell key={`cell-${index}`} fill={val > 0 ? chartTheme.negative : chartTheme.positive} />
                                     ))
                                   }
                                 </Bar>
@@ -495,24 +687,30 @@ export default function Dashboard() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={[
-                        { name: 'Recency (Days)', user: recency, avg: 45 },
-                        { name: 'Frequency (x10)', user: frequency * 10, avg: 50 },
-                        { name: 'Spend ($) / 10', user: monetary / 10, avg: 60 },
-                      ]} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                        <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                        <RechartsTooltip 
-                          cursor={{fill: '#1e293b', opacity: 0.4}}
-                          contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px' }}
-                          itemStyle={{ color: '#f8fafc' }}
-                        />
-                        <Bar dataKey="user" fill="#6366f1" radius={[4, 4, 0, 0]} name="This Customer" />
-                        <Bar dataKey="avg" fill="#334155" radius={[4, 4, 0, 0]} name="Cohort Average" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <div
+                      className="h-full w-full"
+                      role="img"
+                      aria-label="Bar chart comparing this customer's RFM inputs with the demo cohort average"
+                    >
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={[
+                          { name: 'Recency (Days)', user: recency, avg: 45 },
+                          { name: 'Frequency (x10)', user: frequency * 10, avg: 50 },
+                          { name: 'Spend (£) / 10', user: (Number.isFinite(monetary) ? monetary : 0) / 10, avg: 60 },
+                        ]} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} vertical={false} />
+                          <XAxis dataKey="name" stroke={chartTheme.axis} fontSize={12} tickLine={false} axisLine={false} />
+                          <YAxis stroke={chartTheme.axis} fontSize={12} tickLine={false} axisLine={false} />
+                          <RechartsTooltip 
+                            cursor={chartTheme.cursorFill}
+                            contentStyle={chartTheme.tooltipStyle}
+                            itemStyle={chartTheme.tooltipItemStyle}
+                          />
+                          <Bar dataKey="user" fill={chartTheme.brand} radius={[4, 4, 0, 0]} name="This Customer" />
+                          <Bar dataKey="avg" fill={chartTheme.cohort} radius={[4, 4, 0, 0]} name="Cohort Average" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -529,7 +727,7 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     {recommendations.length > 0 ? (
-                      <div className="rounded-md border border-border overflow-hidden">
+                      <div className="rounded-md border border-border overflow-x-auto">
                         <Table>
                           <TableHeader className="bg-background/50">
                             <TableRow className="border-border hover:bg-transparent">
@@ -547,10 +745,14 @@ export default function Dashboard() {
                                 <TableCell className="text-foreground">{rec.description}</TableCell>
                                 <TableCell className="text-right">
                                   <div className="flex items-center justify-end gap-3">
-                                    <span className="text-sm font-medium text-slate-200">
+                                    <span className="text-sm font-medium text-foreground">
                                       {(rec.affinity_score * 100).toFixed(0)}%
                                     </span>
-                                    <Progress value={rec.affinity_score * 100} className="w-16 h-1.5 [&>div]:bg-purple-500" />
+                                    <Progress
+                                      value={rec.affinity_score * 100}
+                                      aria-label={`Affinity score for ${rec.description}`}
+                                      className="w-16 [&_[data-slot=progress-track]]:h-1.5 [&_[data-slot=progress-indicator]]:bg-purple-500"
+                                    />
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -578,7 +780,7 @@ export default function Dashboard() {
                   <CardFooter className="flex flex-col gap-4">
                     <Button 
                       className="w-full bg-indigo-600 hover:bg-indigo-700 text-white" 
-                      onClick={handleGenerateEmail}
+                      onClick={() => void handleGenerateEmail()}
                       disabled={emailLoading}
                     >
                       {emailLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
@@ -586,14 +788,29 @@ export default function Dashboard() {
                     </Button>
                     
                     {emailError && (
-                      <div className="w-full p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-sm text-center">
+                      <div role="alert" className="w-full p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-md text-sm text-center">
                         {emailError}
                       </div>
                     )}
 
                     {emailTemplate && (
-                      <div className="w-full p-4 bg-muted rounded-md text-sm whitespace-pre-wrap font-mono text-muted-foreground text-left">
-                        {emailTemplate}
+                      <div className="w-full overflow-hidden rounded-md border border-border bg-muted/50 text-left">
+                        <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Email draft</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void handleCopyEmail()}
+                            aria-label={emailCopied ? 'Email draft copied' : 'Copy email draft'}
+                          >
+                            {emailCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                            {emailCopied ? 'Copied' : 'Copy'}
+                          </Button>
+                        </div>
+                        <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap p-4 font-mono text-sm text-foreground">
+                          {emailTemplate}
+                        </pre>
                       </div>
                     )}
                   </CardFooter>
@@ -617,33 +834,72 @@ export default function Dashboard() {
               <CardContent className="space-y-6 pt-6">
                 <label 
                   htmlFor="batch-upload"
-                  className="border-2 border-dashed border-border rounded-xl p-10 flex flex-col items-center justify-center text-muted-foreground hover:border-indigo-500/50 hover:bg-slate-800/30 transition-all cursor-pointer relative"
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={(event) => {
+                    event.preventDefault();
+                    setIsDragging(false);
+                  }}
+                  onDrop={handleBatchDrop}
+                  className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center text-muted-foreground transition-all cursor-pointer relative ${
+                    isDragging
+                      ? 'border-indigo-500 bg-indigo-500/10'
+                      : 'border-border hover:border-indigo-500/50 hover:bg-muted/40'
+                  }`}
                 >
                   <input 
+                    key={batchInputKey}
                     type="file" 
                     id="batch-upload" 
                     className="absolute inset-0 opacity-0 cursor-pointer" 
-                    accept=".csv"
-                    onChange={(e) => setBatchFile(e.target.files?.[0] || null)}
+                    accept=".csv,text/csv"
+                    onChange={(event) => void handleBatchFile(event.target.files?.[0] ?? null)}
                   />
                   {batchFile ? (
                     <>
                       <FileText className="w-8 h-8 mb-3 text-indigo-400" />
                       <p className="text-sm font-medium text-foreground">{batchFile.name}</p>
-                      <p className="text-xs mt-1">Ready to process</p>
+                      <p className="text-xs mt-1">Ready to process — click or drop to replace</p>
                     </>
                   ) : (
                     <>
                       <Upload className="w-8 h-8 mb-3 text-foreground" />
-                      <p className="text-sm font-medium text-foreground">Click to upload CSV</p>
-                      <p className="text-xs mt-1">or drag and drop here</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {isDragging ? 'Drop your CSV here' : 'Click to upload CSV'}
+                      </p>
+                      <p className="text-xs mt-1">or drag and drop here · max 5 MB</p>
                     </>
                   )}
                 </label>
+
+                {batchFile && (
+                  <div className="flex justify-end">
+                    <Button type="button" variant="ghost" size="sm" onClick={clearBatchFile}>
+                      Remove selected file
+                    </Button>
+                  </div>
+                )}
+
+                {batchError && (
+                  <div role="alert" className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-500">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>{batchError}</span>
+                  </div>
+                )}
+
+                {batchSuccess && (
+                  <div role="status" className="flex items-start gap-2 rounded-md border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span>{batchSuccess}</span>
+                  </div>
+                )}
+
                 <Button 
-                  onClick={handleBatchSubmit} 
+                  onClick={() => void handleBatchSubmit()} 
                   disabled={!batchFile || batchLoading}
-                  className="w-full bg-slate-100 hover:bg-white text-slate-900 font-medium"
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
                 >
                   {batchLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing...</> : "Process Batch File"}
                 </Button>
@@ -653,58 +909,88 @@ export default function Dashboard() {
 
           <TabsContent value="high-risk" className="focus:outline-none">
             <Card className="bg-card/60 border-border/50 backdrop-blur-md shadow-xl transition-all duration-300">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardHeader className="flex flex-col gap-4 pb-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <CardTitle className="text-2xl font-light">At-Risk Customers</CardTitle>
                   <CardDescription className="text-muted-foreground">
                     Top customers identified by the Deep Learning model with highest probability of churn.
                   </CardDescription>
                 </div>
-                <Button onClick={exportToCSV} variant="outline" className="flex items-center gap-2">
+                <Button
+                  onClick={exportToCSV}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  disabled={highRiskCustomers.length === 0 || atRisk.loading}
+                >
                   <Download className="w-4 h-4" /> Export CSV
                 </Button>
               </CardHeader>
-              <CardContent className="pt-6">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-border hover:bg-transparent">
-                      <TableHead className="text-muted-foreground">Customer ID</TableHead>
-                      <TableHead className="text-muted-foreground">Churn Risk</TableHead>
-                      <TableHead className="text-muted-foreground">Predicted CLV</TableHead>
-                      <TableHead className="text-muted-foreground">Recency</TableHead>
-                      <TableHead className="text-muted-foreground">Frequency</TableHead>
-                      <TableHead className="text-right text-muted-foreground">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {atRiskLoading ? (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                          Analyzing entire customer base...
-                        </TableCell>
+              <CardContent className="pt-6" aria-busy={atRisk.loading}>
+                <div className="overflow-x-auto rounded-md border border-border">
+                  <Table className="min-w-[720px]">
+                    <TableHeader>
+                      <TableRow className="border-border hover:bg-transparent">
+                        <TableHead className="text-muted-foreground">Customer ID</TableHead>
+                        <TableHead className="text-muted-foreground">Churn Risk</TableHead>
+                        <TableHead className="text-muted-foreground">Predicted CLV</TableHead>
+                        <TableHead className="text-muted-foreground">Recency</TableHead>
+                        <TableHead className="text-muted-foreground">Frequency</TableHead>
+                        <TableHead className="text-right text-muted-foreground">Status</TableHead>
                       </TableRow>
-                    ) : highRiskCustomers.map((customer) => (
-                      <TableRow key={customer.id} className="border-border hover:bg-muted/50 transition-colors">
-                        <TableCell className="font-medium text-foreground">#{customer.id}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs">{ (customer.churnRisk * 100).toFixed(1) }%</span>
-                            <Progress value={customer.churnRisk * 100} className="w-16 h-1.5 [&>div]:bg-red-500" />
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-foreground">£{customer.clv.toFixed(2)}</TableCell>
-                        <TableCell className="text-foreground">{customer.recency} days</TableCell>
-                        <TableCell className="text-foreground">{customer.freq} orders</TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant={customer.churnRisk > 0.8 ? "destructive" : "secondary"} className={customer.churnRisk > 0.8 ? "" : "bg-yellow-500/20 text-yellow-500"}>
-                            {customer.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {atRisk.loading ? (
+                        Array.from({ length: 5 }).map((_, index) => (
+                          <TableRow key={`at-risk-skeleton-${index}`}>
+                            <TableCell colSpan={6} className="py-2">
+                              <Skeleton className="h-8 w-full" />
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : atRisk.error ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="py-10">
+                            <div role="alert" className="flex flex-col items-center gap-3 text-center">
+                              <AlertTriangle className="h-6 w-6 text-red-500" aria-hidden="true" />
+                              <p className="text-sm text-muted-foreground">{atRisk.error}</p>
+                              <Button variant="outline" size="sm" onClick={atRisk.retry}>
+                                <RefreshCw className="mr-2 h-4 w-4" /> Try again
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ) : highRiskCustomers.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                            No at-risk customers found.
+                          </TableCell>
+                        </TableRow>
+                      ) : highRiskCustomers.map((customer) => (
+                        <TableRow key={customer.id} className="border-border hover:bg-muted/50 transition-colors">
+                          <TableCell className="font-medium text-foreground">#{customer.id}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs">{ (customer.churnRisk * 100).toFixed(1) }%</span>
+                              <Progress
+                                value={customer.churnRisk * 100}
+                                aria-label={`Churn risk for customer ${customer.id}`}
+                                className="w-16 [&_[data-slot=progress-track]]:h-1.5 [&_[data-slot=progress-indicator]]:bg-red-500"
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-foreground">£{customer.clv.toFixed(2)}</TableCell>
+                          <TableCell className="text-foreground">{customer.recency} days</TableCell>
+                          <TableCell className="text-foreground">{customer.freq} orders</TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={customer.churnRisk > 0.8 ? "destructive" : "secondary"} className={customer.churnRisk > 0.8 ? "" : "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"}>
+                              {customer.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
