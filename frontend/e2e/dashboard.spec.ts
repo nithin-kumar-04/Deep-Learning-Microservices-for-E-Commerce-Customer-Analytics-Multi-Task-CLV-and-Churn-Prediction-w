@@ -23,13 +23,44 @@ const AT_RISK = [
     freq: 3,
     status: 'Monitor',
   },
+  {
+    id: '15000',
+    churnRisk: 0.85,
+    clv: 980,
+    recency: 90,
+    freq: 4,
+    status: 'High Risk',
+  },
+  {
+    id: '14000',
+    churnRisk: 0.31,
+    clv: 2200,
+    recency: 15,
+    freq: 9,
+    status: 'Watch',
+  },
+];
+
+const MONTHS = [
+  '2023-01',
+  '2023-02',
+  '2023-03',
+  '2023-04',
+  '2023-05',
+  '2023-06',
+  '2023-07',
+  '2023-08',
+  '2023-09',
+  '2023-10',
+  '2023-11',
+  '2023-12',
 ];
 
 const OVERVIEW = {
-  historical_monthly: [
-    { date: '2024-01', revenue: 120000 },
-    { date: '2024-02', revenue: 135000 },
-  ],
+  historical_monthly: MONTHS.map((date, index) => ({
+    date,
+    revenue: 900000 + index * 32000,
+  })),
   forecast_90d: 412345.67,
   total_historical: 12456789,
 };
@@ -45,15 +76,51 @@ const SEGMENTS = {
       avg_frequency: 18,
       avg_monetary: 4200,
     },
+    {
+      Segment: 'Loyal Customers',
+      count: 900,
+      avg_clv: 1800,
+      avg_churn: 0.18,
+      avg_recency: 28,
+      avg_frequency: 11,
+      avg_monetary: 2600,
+    },
+    {
+      Segment: 'At-Risk VIPs',
+      count: 420,
+      avg_clv: 2900,
+      avg_churn: 0.64,
+      avg_recency: 96,
+      avg_frequency: 4,
+      avg_monetary: 3900,
+    },
+    {
+      Segment: 'Hibernating',
+      count: 600,
+      avg_clv: 380,
+      avg_churn: 0.79,
+      avg_recency: 210,
+      avg_frequency: 2,
+      avg_monetary: 420,
+    },
   ],
   scatter: [
     { id: '12345', recency: 10, monetary: 1500, frequency: 25, clv: 2400, segment: 'Champions' },
+    { id: '13000', recency: 120, monetary: 320, frequency: 3, clv: 900, segment: 'At-Risk VIPs' },
+    { id: '15000', recency: 90, monetary: 980, frequency: 4, clv: 1500, segment: 'At-Risk VIPs' },
+    { id: '14000', recency: 15, monetary: 2200, frequency: 9, clv: 2100, segment: 'Loyal Customers' },
+    { id: '16000', recency: 220, monetary: 120, frequency: 1, clv: 180, segment: 'Hibernating' },
   ],
 };
 
 const PRODUCTS = {
   top_products: [
     { stock_code: 'SKU-001', description: 'Ceramic Mug', revenue: 12500.75, quantity: 840, buyers: 312 },
+    { stock_code: 'SKU-002', description: 'Tea Towel', revenue: 9400.5, quantity: 610, buyers: 244 },
+    { stock_code: 'SKU-003', description: 'Glass Jar', revenue: 7800, quantity: 520, buyers: 198 },
+    { stock_code: 'SKU-004', description: 'Paper Garland', revenue: 5200.25, quantity: 430, buyers: 176 },
+    { stock_code: 'SKU-005', description: 'Wooden Heart', revenue: 4100, quantity: 390, buyers: 160 },
+    { stock_code: 'SKU-006', description: 'Vintage Sign', revenue: 3300.4, quantity: 210, buyers: 121 },
   ],
 };
 
@@ -169,20 +236,55 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
 });
 
-test('renders the Velora dashboard and live health status', async ({ page }) => {
-  await expect(page.getByRole('heading', { name: 'Velora' })).toBeVisible();
-  await expect(page.getByText('System Online')).toBeVisible();
-  await expect(page.getByText(/Demo data: UCI Online Retail.*v1\.1\.0/)).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Customer Simulator' })).toBeVisible();
+test('renders the app shell, navigation and live health status', async ({ page }) => {
+  await expect(
+    page.getByRole('heading', { name: 'Revenue that stays ahead of churn' }),
+  ).toBeVisible();
+  await expect(page.getByText('API online')).toBeVisible();
+  await expect(page.getByText(/Model service v1\.1\.0/)).toBeVisible();
+
+  for (const label of ['Overview', 'Simulator', 'Segments', 'Products', 'At-Risk', 'Batch']) {
+    await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
+  }
+
+  await expect(page.getByText('Historical revenue')).toBeVisible();
+  await expect(page.getByText('£12,456,789')).toBeVisible();
+  await expect(page.getByText('£412,346').first()).toBeVisible();
 });
 
-test('scores a customer and shows CLV, churn and recommendations', async ({ page }) => {
-  await page.getByRole('button', { name: 'Generate AI Insights' }).click();
+test('navigates with the command palette keyboard shortcut', async ({ page }) => {
+  await page.keyboard.press('Control+K');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await expect(palette).toBeVisible();
 
-  await expect(page.getByText('1234.56')).toBeVisible();
-  await expect(page.getByText('91.0')).toBeVisible();
-  await expect(page.getByText('High Risk')).toBeVisible();
-  await expect(page.getByText('AI Rationale (SHAP Contributions)')).toBeVisible();
+  await palette.getByLabel('Search views').fill('batch');
+  await page.keyboard.press('Enter');
+
+  await expect(page.getByRole('heading', { name: 'Batch scoring' })).toBeVisible();
+  await expect(palette).toHaveCount(0);
+});
+
+test('switches between light and dark themes', async ({ page }) => {
+  const html = page.locator('html');
+  await expect(html).not.toHaveClass(/dark/);
+
+  await page.getByRole('button', { name: 'Dark theme' }).click();
+  await expect(html).toHaveClass(/dark/);
+
+  await page.getByRole('button', { name: 'Light theme' }).click();
+  await expect(html).not.toHaveClass(/dark/);
+});
+
+test('scores a customer and shows CLV, churn, SHAP drivers and recommendations', async ({ page }) => {
+  await page.getByRole('button', { name: 'Simulator', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Customer simulator' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Run models' }).click();
+
+  await expect(page.getByText('£1,234.56')).toBeVisible();
+  await expect(page.getByText('91.0%')).toBeVisible();
+  await expect(page.getByText('Critical', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Why the model moved' })).toBeVisible();
 
   await expect(page.getByText('Ceramic Mug')).toBeVisible();
   await expect(page.getByText('Tea Towel')).toBeVisible();
@@ -190,47 +292,65 @@ test('scores a customer and shows CLV, churn and recommendations', async ({ page
 
 test('generates and copies a win-back email draft', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', { name: 'Simulator', exact: true }).click();
 
-  await page.getByRole('button', { name: 'Draft Win-Back Email' }).click();
+  await page.getByRole('button', { name: 'Draft win-back email' }).click();
 
-  const draft = page.getByText(/We miss you!/);
-  await expect(draft).toBeVisible();
+  await expect(page.getByText(/We miss you!/)).toBeVisible();
 
   await page.getByRole('button', { name: 'Copy email draft' }).click();
   await expect(page.getByRole('button', { name: 'Email draft copied' })).toBeVisible();
 });
 
-test('lazy-loads the overview, segments and products tabs', async ({ page }) => {
-  await page.getByRole('tab', { name: 'Overview' }).click();
-  await expect(page.getByText('Revenue Trajectory')).toBeVisible();
-  await expect(page.getByText('£12,456,789')).toBeVisible();
-  await expect(page.getByText('£412,346')).toBeVisible();
-
-  await page.getByRole('tab', { name: 'Segments' }).click();
-  await expect(page.getByText('Customer Personas')).toBeVisible();
+test('renders segment personas, product analytics and exports reports', async ({ page }) => {
+  await page.getByRole('button', { name: 'Segments', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Customer personas' })).toBeVisible();
   await expect(page.getByRole('table').getByText('Champions')).toBeVisible();
+  await expect(page.getByText('Population composition')).toBeVisible();
 
-  await page.getByRole('tab', { name: 'Products' }).click();
-  await expect(page.getByText('Top Selling Products')).toBeVisible();
-  await expect(page.getByText('Ceramic Mug')).toBeVisible();
-  await expect(page.getByText('SKU-001')).toBeVisible();
+  const segmentsDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export report' }).click();
+  expect((await segmentsDownload).suggestedFilename()).toBe('velora-segments.csv');
+
+  await page.getByRole('button', { name: 'Products', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Product performance' })).toBeVisible();
+  await expect(page.getByRole('table').getByText('Ceramic Mug')).toBeVisible();
+
+  const productsDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export' }).click();
+  expect((await productsDownload).suggestedFilename()).toBe('velora-products.csv');
 });
 
-test('exports at-risk customers to CSV', async ({ page }) => {
-  await page.getByRole('tab', { name: 'At-Risk Customers' }).click();
+test('filters the at-risk queue and exports the current view', async ({ page }) => {
+  await page.getByRole('button', { name: 'At-Risk', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'At-risk workspace' })).toBeVisible();
 
-  await expect(page.getByText('#12345')).toBeVisible();
-  await expect(page.getByText('£1500.50')).toBeVisible();
+  const table = page.getByRole('table');
+  await expect(table.getByText('#12345')).toBeVisible();
+  await expect(table.getByText('#14000')).toBeVisible();
+
+  await page.getByRole('button', { name: /Critical/ }).click();
+  await expect(table.getByText('#12345')).toBeVisible();
+  await expect(table.getByText('#14000')).toHaveCount(0);
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export CSV' }).click();
-  const download = await downloadPromise;
+  expect((await downloadPromise).suggestedFilename()).toBe('velora-at-risk-customers.csv');
+});
 
-  expect(download.suggestedFilename()).toBe('high_risk_customers.csv');
+test('opens the simulator seeded from an at-risk account', async ({ page }) => {
+  await page.getByRole('button', { name: 'At-Risk', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'At-risk workspace' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Simulate customer 12345' }).click();
+  await expect(page.getByRole('heading', { name: 'Customer simulator' })).toBeVisible();
+  await expect(page.getByLabel('Customer ID')).toHaveValue('12345');
+  await expect(page.getByText('£1,234.56')).toBeVisible();
 });
 
 test('validates batch files and reports scoring success', async ({ page }) => {
-  await page.getByRole('tab', { name: 'Batch Processing' }).click();
+  await page.getByRole('button', { name: 'Batch', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Batch scoring' })).toBeVisible();
 
   await page.locator('#batch-upload').setInputFiles({
     name: 'missing-columns.csv',
@@ -238,29 +358,30 @@ test('validates batch files and reports scoring success', async ({ page }) => {
     buffer: Buffer.from('foo,bar\n1,2\n'),
   });
 
-  await expect(page.getByRole('tabpanel', { name: 'Batch Processing' }).getByRole('alert')).toContainText('Missing required columns');
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Missing required columns' }),
+  ).toContainText('Missing required columns');
 
   await page.locator('#batch-upload').setInputFiles({
     name: 'customers.csv',
     mimeType: 'text/csv',
-    buffer: Buffer.from('CustomerID,Recency,Frequency,Monetary\n12345,10,5,500\n'),
+    buffer: Buffer.from('CustomerID,Recency,Frequency,Monetary\n12345,10,5,500\n13000,150,2,100\n'),
   });
 
   await expect(page.getByText('customers.csv')).toBeVisible();
+  await expect(page.getByText(/2 data rows/)).toBeVisible();
 
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Process Batch File' }).click();
-  const download = await downloadPromise;
+  await page.getByRole('button', { name: 'Process batch' }).click();
+  expect((await downloadPromise).suggestedFilename()).toBe('batch_predictions.csv');
 
-  expect(download.suggestedFilename()).toBe('batch_predictions.csv');
-  await expect(page.getByRole('status')).toContainText('Batch scored successfully');
+  await expect(page.getByText('Batch complete')).toBeVisible();
+  await expect(page.getByText(/2 customers scored/).first()).toBeVisible();
 });
 
 test('shows a retryable error when the segments API fails', async ({ page }) => {
   let segmentRequests = 0;
 
-  // Registered after the page loaded, so it only overrides the lazy /segments
-  // call that happens when the tab is opened.
   await page.route(/^http:\/\/localhost:8000\/segments$/, async (route) => {
     if (route.request().method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: CORS_HEADERS });
@@ -284,10 +405,26 @@ test('shows a retryable error when the segments API fails', async ({ page }) => 
     });
   });
 
-  await page.getByRole('tab', { name: 'Segments' }).click();
+  await page.getByRole('button', { name: 'Segments', exact: true }).click();
 
-  await expect(page.getByRole('tabpanel', { name: 'Segments' }).getByRole('alert')).toContainText('The Velora API ran into an error');
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'The Velora API ran into an error' }),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Try again' }).click();
-  await expect(page.getByText('Customer Personas')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Customer personas' })).toBeVisible();
+  await expect(page.getByRole('table').getByText('Champions')).toBeVisible();
+});
+
+test('opens the mobile navigation drawer and navigates', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  const drawer = page.getByRole('dialog', { name: 'Navigation' });
+  await expect(drawer).toBeVisible();
+
+  await drawer.getByRole('button', { name: 'Simulator', exact: true }).click();
+  await expect(drawer).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Customer simulator' })).toBeVisible();
 });

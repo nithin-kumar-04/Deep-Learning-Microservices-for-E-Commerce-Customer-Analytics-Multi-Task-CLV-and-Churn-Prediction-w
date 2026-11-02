@@ -3,24 +3,37 @@
 export const chartTheme = {
   grid: 'var(--border)',
   axis: 'var(--muted-foreground)',
-  brand: '#6366f1',
-  positive: '#10b981',
-  negative: '#ef4444',
+  brand: 'var(--chart-1)',
+  positive: 'var(--chart-2)',
+  warning: 'var(--chart-3)',
+  danger: 'var(--destructive)',
   cohort: 'var(--muted-foreground)',
+  series: [
+    'var(--chart-1)',
+    'var(--chart-2)',
+    'var(--chart-3)',
+    'var(--chart-4)',
+    'var(--chart-5)',
+  ],
   tooltipStyle: {
     backgroundColor: 'var(--popover)',
     borderColor: 'var(--border)',
-    borderRadius: '8px',
+    borderRadius: '12px',
     color: 'var(--popover-foreground)',
     fontSize: '12px',
-    boxShadow: '0 8px 24px rgb(0 0 0 / 0.12)',
+    padding: '10px 12px',
+    boxShadow: '0 16px 40px -16px rgb(0 0 0 / 0.28)',
   },
   tooltipItemStyle: {
     color: 'var(--popover-foreground)',
   },
+  tooltipLabelStyle: {
+    color: 'var(--muted-foreground)',
+    marginBottom: '4px',
+  },
   cursorFill: {
     fill: 'var(--muted)',
-    opacity: 0.6,
+    opacity: 0.55,
   },
   cursorStroke: {
     stroke: 'var(--muted-foreground)',

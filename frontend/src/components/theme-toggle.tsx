@@ -1,20 +1,60 @@
-"use client"
+'use client';
 
-import * as React from "react"
-import { Moon, Sun } from "lucide-react"
-import { useTheme } from "next-themes"
+import { useSyncExternalStore } from 'react';
+import { Monitor, Moon, Sun } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
-export function ThemeToggle() {
-  const { theme, setTheme } = useTheme()
+import { cn } from '@/lib/utils';
+
+const emptySubscribe = () => () => {};
+
+function useMounted() {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
+}
+
+const OPTIONS = [
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'system', label: 'System', icon: Monitor },
+] as const;
+
+export function ThemeToggle({ className }: { className?: string }) {
+  const { theme, setTheme } = useTheme();
+  const mounted = useMounted();
 
   return (
-    <button
-      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      className="inline-flex items-center justify-center rounded-md w-9 h-9 border border-input bg-background hover:bg-accent hover:text-accent-foreground shadow-sm transition-colors"
+    <div
+      role="group"
+      aria-label="Colour theme"
+      className={cn(
+        'inline-flex items-center gap-0.5 rounded-lg border border-border bg-background/60 p-0.5',
+        className,
+      )}
     >
-      <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-      <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-      <span className="sr-only">Toggle theme</span>
-    </button>
-  )
+      {OPTIONS.map(({ value, label, icon: Icon }) => {
+        const active = mounted && theme === value;
+        return (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setTheme(value)}
+            aria-label={`${label} theme`}
+            aria-pressed={active}
+            className={cn(
+              'grid size-7 place-items-center rounded-md transition-all',
+              active
+                ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Icon className="size-3.5" />
+          </button>
+        );
+      })}
+    </div>
+  );
 }
