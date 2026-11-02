@@ -3,11 +3,6 @@
 export const chartTheme = {
   grid: 'var(--border)',
   axis: 'var(--muted-foreground)',
-  brand: 'var(--chart-1)',
-  positive: 'var(--chart-2)',
-  warning: 'var(--chart-3)',
-  danger: 'var(--destructive)',
-  cohort: 'var(--muted-foreground)',
   series: [
     'var(--chart-1)',
     'var(--chart-2)',

@@ -115,7 +115,8 @@ export function ProductsView({ onNavigate }: { onNavigate: (view: ViewId) => voi
 
   const totalRevenue = products.reduce((total, product) => total + product.revenue, 0);
   const unitsSold = products.reduce((total, product) => total + product.quantity, 0);
-  const buyerReach = products.reduce((total, product) => total + product.buyers, 0);
+  const buyerPairs = products.reduce((total, product) => total + product.buyers, 0);
+  const averageBuyers = products.length > 0 ? buyerPairs / products.length : 0;
   const topFive = ranked.slice(0, 5).reduce((total, product) => total + product.revenue, 0);
   const concentration = totalRevenue > 0 ? topFive / totalRevenue : 0;
   const topProduct = ranked[0];
@@ -204,11 +205,11 @@ export function ProductsView({ onNavigate }: { onNavigate: (view: ViewId) => voi
           hint="Total quantity across the catalogue"
         />
         <KpiCard
-          label="Buyer reach"
-          value={formatCompactNumber(buyerReach)}
+          label="Avg buyers per product"
+          value={formatNumber(Math.round(averageBuyers))}
           icon={Users}
           tone="primary"
-          hint="Sum of unique buyers per product"
+          hint="Unique buyers averaged across the catalogue"
         />
         <KpiCard
           label="Top-5 concentration"

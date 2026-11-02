@@ -65,6 +65,12 @@ export const VIEWS: ViewMeta[] = [
 
 export const NAV_GROUPS: ViewMeta['group'][] = ['Analyse', 'Operate'];
 
+const VIEW_IDS = new Set<string>(VIEWS.map((view) => view.id));
+
+export function isViewId(value: string): value is ViewId {
+  return VIEW_IDS.has(value);
+}
+
 export function getViewMeta(id: ViewId): ViewMeta {
   return VIEWS.find((view) => view.id === id) ?? VIEWS[0];
 }

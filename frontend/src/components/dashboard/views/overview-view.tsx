@@ -5,13 +5,13 @@ import {
   ChartSpline,
   Database,
   Gauge,
+  Layers,
   RefreshCw,
   ShieldAlert,
   Sparkles,
   TrendingUp,
   Users,
   Wallet,
-  Zap,
 } from 'lucide-react';
 import {
   Area,
@@ -27,6 +27,7 @@ import { ErrorState } from '@/components/ErrorState';
 import {
   CustomerAvatar,
   EmptyState,
+  InlineAlert,
   KpiCard,
   Meter,
   PageHeader,
@@ -37,7 +38,14 @@ import {
 } from '@/components/dashboard/ui-kit';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getAtRiskCustomers, getBusinessOverview, type AtRiskCustomer, type BusinessOverview } from '@/lib/api';
+import {
+  getAtRiskCustomers,
+  getBusinessOverview,
+  getSegments,
+  type AtRiskCustomer,
+  type BusinessOverview,
+  type SegmentsResponse,
+} from '@/lib/api';
 import { chartTheme } from '@/lib/chart-theme';
 import { formatCurrency, formatMonth, formatNumber, formatPercent } from '@/lib/format';
 import {
@@ -45,6 +53,8 @@ import {
   monthOverMonthChange,
   revenueAtRisk,
   riskDistribution,
+  segmentColor,
+  totalSegmentCustomers,
 } from '@/lib/insights';
 import type { ViewId } from '@/lib/navigation';
 import { useApiData } from '@/lib/use-api-data';
@@ -70,6 +80,7 @@ export function OverviewView({ onNavigate }: { onNavigate: (view: ViewId) => voi
   const atRisk = useApiData<AtRiskCustomer[]>('at-risk-customers', getAtRiskCustomers, {
     ttlMs: 60_000,
   });
+  const segments = useApiData<SegmentsResponse>('segments', getSegments);
 
   const data = overview.data;
 
@@ -103,6 +114,12 @@ export function OverviewView({ onNavigate }: { onNavigate: (view: ViewId) => voi
     label: formatMonth(point.date),
     revenue: point.revenue,
   }));
+  const segmentSummary = segments.data?.summary ?? [];
+  const segmentPopulation = totalSegmentCustomers(segmentSummary);
+  const topSegments = [...segmentSummary]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
+  const riskiestSegment = [...segmentSummary].sort((a, b) => b.avg_churn - a.avg_churn)[0] ?? null;
 
   return (
     <div className="space-y-5">
@@ -397,52 +414,88 @@ export function OverviewView({ onNavigate }: { onNavigate: (view: ViewId) => voi
           )}
         </Panel>
 
-        <Panel title="Operating playbook" description="The three moves that protect this quarter." icon={Zap}>
-          <div className="space-y-1">
-            {[
-              {
-                title: 'Rescue critical accounts',
-                copy: 'Work the top 10 by weighted CLV with a win-back offer.',
-                view: 'at-risk' as ViewId,
-                icon: ShieldAlert,
-              },
-              {
-                title: 'Reward the champions',
-                copy: 'Protect advocacy with an early-access or loyalty perk.',
-                view: 'segments' as ViewId,
-                icon: Users,
-              },
-              {
-                title: 'Re-score a saved profile',
-                copy: 'Change recency, frequency or spend and watch the model move.',
-                view: 'simulator' as ViewId,
-                icon: Sparkles,
-              },
-            ].map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.title}
-                  type="button"
-                  onClick={() => onNavigate(item.view)}
-                  className="group flex w-full items-start gap-3 rounded-xl p-2.5 text-left transition-colors hover:bg-muted/50"
-                >
-                  <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                    <Icon className="size-4" aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center justify-between gap-2 text-sm font-medium">
-                      {item.title}
-                      <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                    </span>
-                    <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-                      {item.copy}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        <Panel
+          title="Segment pulse"
+          description="Where the customer base sits, and which cohort needs attention first."
+          icon={Layers}
+          action={<Pill>{segmentSummary.length} personas</Pill>}
+        >
+          {topSegments.length > 0 ? (
+            <div className="space-y-4">
+              <ul className="space-y-3">
+                {topSegments.map((segment) => {
+                  const share = segment.count / Math.max(segmentPopulation, 1);
+                  return (
+                    <li key={segment.Segment}>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('segments')}
+                        className="group w-full rounded-xl p-2 text-left transition-colors hover:bg-muted/50"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span
+                              className="size-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: segmentColor(segment.Segment) }}
+                              aria-hidden="true"
+                            />
+                            <span className="truncate text-sm font-medium">{segment.Segment}</span>
+                          </span>
+                          <span className="text-xs font-medium tabular-nums">
+                            {formatPercent(share, 0)}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                          <span>{formatNumber(segment.count)} customers</span>
+                          <span>{formatCurrency(segment.avg_clv)} avg CLV</span>
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Meter
+                            value={segment.avg_churn}
+                            tone={riskTone(segment.avg_churn)}
+                            label={`${segment.Segment} average churn risk`}
+                            className="h-1"
+                          />
+                          <span className="w-10 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">
+                            {formatPercent(segment.avg_churn, 0)}
+                          </span>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {riskiestSegment ? (
+                <InlineAlert variant="info" title="First intervention">
+                  <strong className="font-medium text-foreground">{riskiestSegment.Segment}</strong>{' '}
+                  carries the highest average churn at {formatPercent(riskiestSegment.avg_churn)}.
+                  Review the segment before working the at-risk queue.
+                </InlineAlert>
+              ) : null}
+
+              <Button variant="outline" size="sm" className="w-full" onClick={() => onNavigate('segments')}>
+                Open segment report
+                <ArrowRight />
+              </Button>
+            </div>
+          ) : (
+            <EmptyState
+              icon={Layers}
+              title={segments.loading ? 'Loading segment pulse…' : 'Segment data unavailable'}
+              description={
+                segments.error ??
+                'Persona composition and risk will appear once the segment report loads.'
+              }
+              action={
+                segments.error ? (
+                  <Button variant="outline" size="sm" onClick={segments.retry}>
+                    Try again
+                  </Button>
+                ) : undefined
+              }
+            />
+          )}
         </Panel>
       </div>
     </div>

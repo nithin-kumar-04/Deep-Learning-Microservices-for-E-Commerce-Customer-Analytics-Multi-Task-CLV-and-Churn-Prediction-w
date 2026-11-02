@@ -250,6 +250,7 @@ test('renders the app shell, navigation and live health status', async ({ page }
   await expect(page.getByText('Historical revenue')).toBeVisible();
   await expect(page.getByText('£12,456,789')).toBeVisible();
   await expect(page.getByText('£412,346').first()).toBeVisible();
+  await expect(page.getByText('Segment pulse')).toBeVisible();
 });
 
 test('navigates with the command palette keyboard shortcut', async ({ page }) => {
@@ -262,6 +263,21 @@ test('navigates with the command palette keyboard shortcut', async ({ page }) =>
 
   await expect(page.getByRole('heading', { name: 'Batch scoring' })).toBeVisible();
   await expect(palette).toHaveCount(0);
+});
+
+test('honours deep links and browser history', async ({ page }) => {
+  await page.goto('/?deep-link=1#/simulator');
+  await expect(page.getByRole('heading', { name: 'Customer simulator' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Segments', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Customer personas' })).toBeVisible();
+  await expect(page).toHaveURL(/#\/segments$/);
+
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Customer simulator' })).toBeVisible();
+
+  await page.goForward();
+  await expect(page.getByRole('heading', { name: 'Customer personas' })).toBeVisible();
 });
 
 test('switches between light and dark themes', async ({ page }) => {
@@ -288,6 +304,10 @@ test('scores a customer and shows CLV, churn, SHAP drivers and recommendations',
 
   await expect(page.getByText('Ceramic Mug')).toBeVisible();
   await expect(page.getByText('Tea Towel')).toBeVisible();
+  await expect(page.getByText('Versus portfolio average')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Run models' }).click();
+  await expect(page.getByText('vs last run').first()).toBeVisible();
 });
 
 test('generates and copies a win-back email draft', async ({ page, context }) => {
@@ -328,6 +348,7 @@ test('filters the at-risk queue and exports the current view', async ({ page }) 
   const table = page.getByRole('table');
   await expect(table.getByText('#12345')).toBeVisible();
   await expect(table.getByText('#14000')).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Exposure' })).toBeVisible();
 
   await page.getByRole('button', { name: /Critical/ }).click();
   await expect(table.getByText('#12345')).toBeVisible();
@@ -370,6 +391,9 @@ test('validates batch files and reports scoring success', async ({ page }) => {
 
   await expect(page.getByText('customers.csv')).toBeVisible();
   await expect(page.getByText(/2 data rows/)).toBeVisible();
+  const preview = page.getByRole('table', { name: 'Batch file preview' });
+  await expect(preview.getByText('12345')).toBeVisible();
+  await expect(preview.getByText('500')).toBeVisible();
 
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Process batch' }).click();
@@ -379,8 +403,23 @@ test('validates batch files and reports scoring success', async ({ page }) => {
   await expect(page.getByText(/2 customers scored/).first()).toBeVisible();
 });
 
+test('rejects batch rows with non-numeric RFM values', async ({ page }) => {
+  await page.getByRole('button', { name: 'Batch', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Batch scoring' })).toBeVisible();
+
+  await page.locator('#batch-upload').setInputFiles({
+    name: 'bad-values.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from('CustomerID,Recency,Frequency,Monetary\n12345,ten,5,500\n'),
+  });
+
+  const alert = page.getByRole('alert').filter({ hasText: 'invalid values' });
+  await expect(alert).toContainText('Row 2: Recency must be a non-negative number');
+  await expect(page.getByRole('button', { name: 'Process batch' })).toBeDisabled();
+});
+
 test('shows a retryable error when the segments API fails', async ({ page }) => {
-  let segmentRequests = 0;
+  let shouldFail = true;
 
   await page.route(/^http:\/\/localhost:8000\/segments$/, async (route) => {
     if (route.request().method() === 'OPTIONS') {
@@ -388,8 +427,7 @@ test('shows a retryable error when the segments API fails', async ({ page }) => 
       return;
     }
 
-    segmentRequests += 1;
-    if (segmentRequests === 1) {
+    if (shouldFail) {
       await route.fulfill({
         status: 500,
         headers: { ...CORS_HEADERS, 'content-type': 'application/json' },
@@ -405,12 +443,14 @@ test('shows a retryable error when the segments API fails', async ({ page }) => 
     });
   });
 
-  await page.getByRole('button', { name: 'Segments', exact: true }).click();
+  // Reload directly on the deep link so the segment cache starts empty.
+  await page.goto('/?segments-test=1#/segments');
 
   await expect(
     page.getByRole('alert').filter({ hasText: 'The Velora API ran into an error' }),
   ).toBeVisible();
 
+  shouldFail = false;
   await page.getByRole('button', { name: 'Try again' }).click();
   await expect(page.getByRole('heading', { name: 'Customer personas' })).toBeVisible();
   await expect(page.getByRole('table').getByText('Champions')).toBeVisible();

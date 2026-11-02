@@ -372,6 +372,10 @@ export function AppShell({ activeView, onNavigate, health, children }: AppShellP
     <div className="relative min-h-screen bg-background text-foreground">
       <a
         href="#main"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById('main')?.focus();
+        }}
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:text-primary-foreground"
       >
         Skip to content
@@ -487,7 +491,11 @@ export function AppShell({ activeView, onNavigate, health, children }: AppShellP
           </div>
         </header>
 
-        <main id="main" className="mx-auto w-full max-w-[1440px] px-3 py-6 sm:px-5 sm:py-7 lg:px-8 lg:py-8">
+        <main
+          id="main"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-[1440px] px-3 py-6 outline-none sm:px-5 sm:py-7 lg:px-8 lg:py-8"
+        >
           <div key={activeView} className="animate-rise">
             {children}
           </div>

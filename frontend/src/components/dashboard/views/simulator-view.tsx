@@ -39,22 +39,53 @@ import {
   generateEmail,
   getCustomerRFM,
   getRecommendations,
+  getSegments,
   predictCLV,
   type CLVExplanation,
   type CLVPrediction,
   type Recommendation,
 } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/errors';
-import { clamp, formatCurrency, formatPercent } from '@/lib/format';
+import { formatCurrency, formatPercent } from '@/lib/format';
+import { weightedSegmentBenchmark } from '@/lib/insights';
 import type { ViewId } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
+import { useApiData } from '@/lib/use-api-data';
 
 const PRESETS = [
   { id: '12345', name: 'High value', detail: 'Recent, frequent, high spend', r: 10, f: 25, m: 1500 },
   { id: '13000', name: 'At-risk VIP', detail: 'High value, long absence', r: 150, f: 2, m: 100 },
 ];
 
-const COHORT = { recency: 45, frequency: 5, monetary: 500 };
+interface RunResult {
+  prediction: CLVPrediction;
+  explanation: CLVExplanation;
+}
+
+function RunDelta({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'success' | 'warning' | 'neutral';
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium',
+        tone === 'success'
+          ? 'bg-success/10 text-success'
+          : tone === 'warning'
+            ? 'bg-warning/10 text-warning'
+            : 'bg-muted text-muted-foreground',
+      )}
+    >
+      {label} {value}
+    </span>
+  );
+}
 
 function ShapBars({ explanation }: { explanation: CLVExplanation }) {
   const rows = [
@@ -132,12 +163,17 @@ export function SimulatorView({
   const [frequency, setFrequency] = useState(5);
   const [monetary, setMonetary] = useState(500);
 
-  const [prediction, setPrediction] = useState<CLVPrediction | null>(null);
-  const [explanation, setExplanation] = useState<CLVExplanation | null>(null);
+  const [result, setResult] = useState<RunResult | null>(null);
+  const [previousResult, setPreviousResult] = useState<RunResult | null>(null);
+  const resultRef = useRef<RunResult | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recError, setRecError] = useState<string | null>(null);
+
+  const segments = useApiData('segments', getSegments);
+  const prediction = result?.prediction ?? null;
+  const explanation = result?.explanation ?? null;
 
   const [emailTemplate, setEmailTemplate] = useState<string | null>(null);
   const [emailLoading, setEmailLoading] = useState(false);
@@ -158,8 +194,14 @@ export function SimulatorView({
     setRecError(null);
     try {
       const [pred, expl] = await Promise.all([predictCLV(r, f, m), explainCLV(r, f, m)]);
-      setPrediction(pred);
-      setExplanation(expl);
+      const nextResult: RunResult = {
+        prediction: pred,
+        explanation: expl,
+      };
+      const previous = resultRef.current;
+      resultRef.current = nextResult;
+      setResult(nextResult);
+      setPreviousResult(previous);
 
       const numericCustomerId = Number(cId);
       if (!Number.isFinite(numericCustomerId) || numericCustomerId <= 0) {
@@ -195,6 +237,8 @@ export function SimulatorView({
     const loadSeededProfile = async () => {
       setLoading(true);
       setError(null);
+      resultRef.current = null;
+      setPreviousResult(null);
       try {
         const rfm = await getCustomerRFM(initialCustomerId);
         setRecency(rfm.recency);
@@ -225,6 +269,8 @@ export function SimulatorView({
     setError(null);
     setEmailTemplate(null);
     setEmailError(null);
+    resultRef.current = null;
+    setPreviousResult(null);
     try {
       const rfm = await getCustomerRFM(trimmedId);
       setRecency(rfm.recency);
@@ -248,6 +294,8 @@ export function SimulatorView({
     setFrequency(preset.f);
     setMonetary(preset.m);
     setEmailTemplate(null);
+    resultRef.current = null;
+    setPreviousResult(null);
     void runPrediction(preset.r, preset.f, preset.m, preset.id);
   };
 
@@ -304,23 +352,45 @@ export function SimulatorView({
     }
   };
 
-  const cohortRows = [
-    {
-      label: 'Recency',
-      value: `${recency} days`,
-      index: clamp(COHORT.recency / Math.max(recency, 1), 0, 2),
-    },
-    {
-      label: 'Frequency',
-      value: `${frequency} orders`,
-      index: clamp(frequency / COHORT.frequency, 0, 2),
-    },
-    {
-      label: 'Monetary',
-      value: formatCurrency(monetary, true),
-      index: clamp(monetary / COHORT.monetary, 0, 2),
-    },
-  ];
+  const benchmark = segments.data ? weightedSegmentBenchmark(segments.data.summary) : null;
+  const benchmarkRows = benchmark
+    ? [
+        {
+          label: 'Recency',
+          value: `${recency} days`,
+          benchmark: `${Math.round(benchmark.recency)} days`,
+          ratio: benchmark.recency > 0 ? recency / benchmark.recency : 0,
+          better: recency <= benchmark.recency,
+        },
+        {
+          label: 'Frequency',
+          value: `${frequency} orders`,
+          benchmark: `${benchmark.frequency.toFixed(1)} orders`,
+          ratio: benchmark.frequency > 0 ? frequency / benchmark.frequency : 0,
+          better: frequency >= benchmark.frequency,
+        },
+        {
+          label: 'Monetary',
+          value: formatCurrency(monetary, true),
+          benchmark: formatCurrency(benchmark.monetary, true),
+          ratio: benchmark.monetary > 0 ? monetary / benchmark.monetary : 0,
+          better: monetary >= benchmark.monetary,
+        },
+      ]
+    : [];
+
+  const clvDelta =
+    prediction && previousResult
+      ? prediction.predicted_clv_90d - previousResult.prediction.predicted_clv_90d
+      : null;
+  const clvDeltaShare =
+    clvDelta != null && previousResult && previousResult.prediction.predicted_clv_90d !== 0
+      ? clvDelta / previousResult.prediction.predicted_clv_90d
+      : null;
+  const churnDelta =
+    prediction && previousResult
+      ? prediction.churn_probability - previousResult.prediction.churn_probability
+      : null;
 
   return (
     <div className="space-y-5">
@@ -489,22 +559,6 @@ export function SimulatorView({
                   step={1}
                   labels={['Frequency in orders']}
                 />
-                <div>
-                  <div className="flex gap-1" aria-hidden="true">
-                    {Array.from({ length: 12 }).map((_, index) => (
-                      <span
-                        key={index}
-                        className={cn(
-                          'h-1.5 flex-1 rounded-full',
-                          ((index * 7 + 3) % 50) < frequency ? 'bg-primary/70' : 'bg-muted',
-                        )}
-                      />
-                    ))}
-                  </div>
-                  <p className="mt-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Illustrative purchase cadence · 12 months
-                  </p>
-                </div>
               </div>
 
               <div className="space-y-2.5">
@@ -548,27 +602,47 @@ export function SimulatorView({
               </Button>
 
               <div className="rounded-xl border border-border/70 bg-muted/30 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Versus demo cohort
-                </p>
-                <dl className="mt-2 space-y-1.5">
-                  {cohortRows.map((row) => (
-                    <div key={row.label} className="flex items-center justify-between gap-2 text-[11px]">
-                      <dt className="text-muted-foreground">{row.label}</dt>
-                      <dd className="flex items-center gap-2 font-medium">
-                        {row.value}
-                        <span
-                          className={cn(
-                            'rounded px-1 py-0.5 text-[10px] font-semibold',
-                            row.index >= 1 ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning',
-                          )}
-                        >
-                          {Math.round(row.index * 100)}%
-                        </span>
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    Versus portfolio average
+                  </p>
+                  {segments.loading && !benchmark ? (
+                    <span className="text-[10px] text-muted-foreground">Loading…</span>
+                  ) : null}
+                </div>
+                {benchmarkRows.length > 0 ? (
+                  <dl className="mt-2 space-y-1.5">
+                    {benchmarkRows.map((row) => (
+                      <div
+                        key={row.label}
+                        className="flex items-center justify-between gap-2 text-[11px]"
+                      >
+                        <dt className="text-muted-foreground">{row.label}</dt>
+                        <dd className="flex items-center gap-2 font-medium">
+                          <span className="text-[10px] font-normal text-muted-foreground">
+                            {row.benchmark}
+                          </span>
+                          {row.value}
+                          <span
+                            className={cn(
+                              'rounded px-1 py-0.5 text-[10px] font-semibold',
+                              row.better ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning',
+                            )}
+                            title={`${Math.round(row.ratio * 100)}% of the portfolio average`}
+                          >
+                            {Math.round(row.ratio * 100)}%
+                          </span>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                    {segments.error
+                      ? 'Segment benchmark is unavailable right now. Your inputs are still scored against the models.'
+                      : 'Portfolio benchmark will appear once the segment report loads.'}
+                  </p>
+                )}
               </div>
             </div>
           </Panel>
@@ -609,6 +683,15 @@ export function SimulatorView({
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                   Projected customer value over the next quarter.
                 </p>
+                {clvDelta != null ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <RunDelta
+                      label="vs last run"
+                      value={`${clvDelta >= 0 ? '+' : ''}${formatCurrency(clvDelta)}${clvDeltaShare != null ? ` (${clvDeltaShare >= 0 ? '+' : ''}${formatPercent(clvDeltaShare)})` : ''}`}
+                      tone={clvDelta > 0 ? 'success' : clvDelta < 0 ? 'warning' : 'neutral'}
+                    />
+                  </div>
+                ) : null}
                 <div className="mt-4 flex items-center gap-2">
                   <CustomerAvatar value={customerId} />
                   <div className="min-w-0">
@@ -640,6 +723,15 @@ export function SimulatorView({
                 <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                   Probability the account goes dormant.
                 </p>
+                {churnDelta != null ? (
+                  <div className="mt-2">
+                    <RunDelta
+                      label="vs last run"
+                      value={`${churnDelta >= 0 ? '+' : ''}${(churnDelta * 100).toFixed(1)} pp`}
+                      tone={churnDelta < 0 ? 'success' : churnDelta > 0 ? 'warning' : 'neutral'}
+                    />
+                  </div>
+                ) : null}
                 <Meter
                   value={prediction?.churn_probability ?? 0}
                   tone={riskTone(prediction?.churn_probability ?? 0)}

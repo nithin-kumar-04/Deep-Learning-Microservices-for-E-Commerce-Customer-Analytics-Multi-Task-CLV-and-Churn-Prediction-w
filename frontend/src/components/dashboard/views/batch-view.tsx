@@ -33,48 +33,144 @@ import { cn } from '@/lib/utils';
 const REQUIRED_COLUMNS = ['CustomerID', 'Recency', 'Frequency', 'Monetary'];
 const MAX_BYTES = 5 * 1024 * 1024;
 
+interface BatchPreviewRow {
+  customerId: string;
+  recency: string;
+  frequency: string;
+  monetary: string;
+}
+
+interface BatchValidation {
+  error: string | null;
+  rows: number;
+  preview: BatchPreviewRow[];
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-async function validateBatchFile(file: File): Promise<{ error: string | null; rows: number }> {
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+    if (character === '"') {
+      if (inQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (character === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+    } else {
+      current += character;
+    }
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+async function validateBatchFile(file: File): Promise<BatchValidation> {
   if (!file.name.toLowerCase().endsWith('.csv')) {
-    return { error: 'Choose a .csv file.', rows: 0 };
+    return { error: 'Choose a .csv file.', rows: 0, preview: [] };
   }
   if (file.size === 0) {
-    return { error: 'That file is empty. Add rows and try again.', rows: 0 };
+    return { error: 'That file is empty. Add rows and try again.', rows: 0, preview: [] };
   }
   if (file.size > MAX_BYTES) {
-    return { error: 'That file is larger than 5 MB. Split it into smaller batches.', rows: 0 };
+    return { error: 'That file is larger than 5 MB. Split it into smaller batches.', rows: 0, preview: [] };
   }
 
   const text = await file.text();
   const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
   if (lines.length < 2) {
-    return { error: 'That file has a header but no customer rows.', rows: 0 };
+    return { error: 'That file has a header but no customer rows.', rows: 0, preview: [] };
   }
 
-  const headers = lines[0]
-    .replace(/^\uFEFF/, '')
-    .split(',')
-    .map((header) => header.trim().replace(/^"|"$/g, '').toLowerCase());
+  const headers = parseCsvLine(lines[0].replace(/^\uFEFF/, '')).map((header) =>
+    header.replace(/^"|"$/g, '').toLowerCase(),
+  );
   const missing = REQUIRED_COLUMNS.filter((column) => !headers.includes(column.toLowerCase()));
   if (missing.length > 0) {
     return {
       error: `Missing required column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}. Expected CustomerID, Recency, Frequency, Monetary.`,
       rows: 0,
+      preview: [],
     };
   }
 
-  return { error: null, rows: lines.length - 1 };
+  const columnIndex = {
+    customerId: headers.indexOf('customerid'),
+    recency: headers.indexOf('recency'),
+    frequency: headers.indexOf('frequency'),
+    monetary: headers.indexOf('monetary'),
+  };
+
+  const preview: BatchPreviewRow[] = [];
+  const invalidRows: string[] = [];
+  let invalidCount = 0;
+
+  lines.slice(1).forEach((line, index) => {
+    const cells = parseCsvLine(line);
+    const customerId = cells[columnIndex.customerId] ?? '';
+    const recency = cells[columnIndex.recency] ?? '';
+    const frequency = cells[columnIndex.frequency] ?? '';
+    const monetary = cells[columnIndex.monetary] ?? '';
+    const numericCells = [
+      { label: 'Recency', value: recency },
+      { label: 'Frequency', value: frequency },
+      { label: 'Monetary', value: monetary },
+    ];
+    const problems: string[] = [];
+
+    if (!customerId) problems.push('CustomerID is empty');
+
+    numericCells.forEach((cell) => {
+      const parsed = Number(cell.value);
+      if (cell.value.trim() === '' || !Number.isFinite(parsed) || parsed < 0) {
+        problems.push(`${cell.label} must be a non-negative number`);
+      }
+    });
+
+    if (problems.length > 0) {
+      invalidCount += 1;
+      if (invalidRows.length < 3) {
+        invalidRows.push(`Row ${index + 2}: ${problems.join(', ')}`);
+      }
+      return;
+    }
+
+    if (preview.length < 3) {
+      preview.push({ customerId, recency, frequency, monetary });
+    }
+  });
+
+  if (invalidCount > 0) {
+    const details = invalidRows.join('; ');
+    const remainder = invalidCount > invalidRows.length ? ` and ${invalidCount - invalidRows.length} more` : '';
+    return {
+      error: `${invalidCount} row${invalidCount > 1 ? 's' : ''} have invalid values. ${details}${remainder}.`,
+      rows: 0,
+      preview: [],
+    };
+  }
+
+  return { error: null, rows: lines.length - 1, preview };
 }
 
 export function BatchView({ onNavigate }: { onNavigate: (view: ViewId) => void }) {
   const { toast } = useToast();
   const [batchFile, setBatchFile] = useState<File | null>(null);
   const [rowCount, setRowCount] = useState(0);
+  const [preview, setPreview] = useState<BatchPreviewRow[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
   const [batchError, setBatchError] = useState<string | null>(null);
   const [batchSuccess, setBatchSuccess] = useState<string | null>(null);
@@ -90,6 +186,7 @@ export function BatchView({ onNavigate }: { onNavigate: (view: ViewId) => void }
     if (!file) {
       setBatchFile(null);
       setRowCount(0);
+      setPreview([]);
       return;
     }
 
@@ -97,6 +194,7 @@ export function BatchView({ onNavigate }: { onNavigate: (view: ViewId) => void }
     if (result.error) {
       setBatchFile(null);
       setRowCount(0);
+      setPreview([]);
       setBatchError(result.error);
       resetInput();
       return;
@@ -104,6 +202,7 @@ export function BatchView({ onNavigate }: { onNavigate: (view: ViewId) => void }
 
     setBatchFile(file);
     setRowCount(result.rows);
+    setPreview(result.preview);
   };
 
   const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
@@ -115,6 +214,7 @@ export function BatchView({ onNavigate }: { onNavigate: (view: ViewId) => void }
   const clearFile = () => {
     setBatchFile(null);
     setRowCount(0);
+    setPreview([]);
     setBatchError(null);
     setBatchSuccess(null);
     resetInput();
@@ -141,6 +241,7 @@ export function BatchView({ onNavigate }: { onNavigate: (view: ViewId) => void }
       setLastRun({ filename: batchFile.name, rows: rowCount });
       setBatchFile(null);
       setRowCount(0);
+      setPreview([]);
       resetInput();
       toast({ title: 'Batch scored successfully', description: message, variant: 'success' });
     } catch (err) {
@@ -269,6 +370,41 @@ export function BatchView({ onNavigate }: { onNavigate: (view: ViewId) => void }
                   <X />
                   Remove
                 </Button>
+              </div>
+            ) : null}
+
+            {batchFile && preview.length > 0 ? (
+              <div className="overflow-hidden rounded-xl border border-border/70">
+                <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-muted/25 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    File preview
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {preview.length} of {formatNumber(rowCount)} rows
+                  </p>
+                </div>
+                <div className="scrollbar-thin overflow-x-auto">
+                  <table className="w-full min-w-[420px] text-[11px]" aria-label="Batch file preview">
+                    <thead>
+                      <tr className="border-b border-border/70 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <th scope="col" className="px-3 py-2 font-semibold">CustomerID</th>
+                        <th scope="col" className="px-3 py-2 text-right font-semibold">Recency</th>
+                        <th scope="col" className="px-3 py-2 text-right font-semibold">Frequency</th>
+                        <th scope="col" className="px-3 py-2 text-right font-semibold">Monetary</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/70">
+                      {preview.map((row, index) => (
+                        <tr key={`${row.customerId}-${index}`}>
+                          <td className="px-3 py-2 font-mono">{row.customerId}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{row.recency}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{row.frequency}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{row.monetary}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : null}
 

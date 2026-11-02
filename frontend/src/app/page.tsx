@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { AppShell, type ApiHealth } from '@/components/dashboard/app-shell';
 import { AtRiskView } from '@/components/dashboard/views/at-risk-view';
@@ -11,15 +11,41 @@ import { SegmentsView } from '@/components/dashboard/views/segments-view';
 import { SimulatorView } from '@/components/dashboard/views/simulator-view';
 import { getHealth } from '@/lib/api';
 import type { AtRiskCustomer } from '@/lib/api';
-import type { ViewId } from '@/lib/navigation';
+import { isViewId, type ViewId } from '@/lib/navigation';
 
 interface SimulatorSeed {
   customerId: string;
   nonce: number;
 }
 
+function subscribeToHash(callback: () => void) {
+  window.addEventListener('hashchange', callback);
+  window.addEventListener('popstate', callback);
+  // Re-check once after hydration, in case the page loaded with a hash before
+  // the subscription was attached.
+  callback();
+  return () => {
+    window.removeEventListener('hashchange', callback);
+    window.removeEventListener('popstate', callback);
+  };
+}
+
+function getHashSnapshot() {
+  return typeof window === 'undefined' ? '' : window.location.hash;
+}
+
+function getServerHashSnapshot() {
+  return '';
+}
+
+function viewFromHash(hash: string): ViewId {
+  const value = hash.replace(/^#\/?/, '').split('?')[0];
+  return isViewId(value) ? value : 'overview';
+}
+
 export default function Dashboard() {
-  const [activeView, setActiveView] = useState<ViewId>('overview');
+  const hash = useSyncExternalStore(subscribeToHash, getHashSnapshot, getServerHashSnapshot);
+  const activeView = viewFromHash(hash);
   const [seed, setSeed] = useState<SimulatorSeed | null>(null);
   const [health, setHealth] = useState<ApiHealth>({ status: 'checking' });
 
@@ -55,7 +81,10 @@ export default function Dashboard() {
   }, []);
 
   const navigate = (view: ViewId) => {
-    setActiveView(view);
+    const target = `#/${view}`;
+    if (window.location.hash !== target) {
+      window.location.hash = target;
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

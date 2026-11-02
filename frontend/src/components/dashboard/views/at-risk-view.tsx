@@ -37,6 +37,7 @@ import { downloadCsv, toCsv } from '@/lib/csv';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/format';
 import {
   averageChurn,
+  customerExposure,
   revenueAtRisk,
   riskDistribution,
   riskTier,
@@ -51,7 +52,7 @@ type TierFilter = 'all' | RiskTier;
 type SortKey = 'weighted' | 'churn' | 'clv' | 'recency';
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: 'weighted', label: 'Value-weighted risk' },
+  { value: 'weighted', label: 'Highest exposure' },
   { value: 'churn', label: 'Highest churn' },
   { value: 'clv', label: 'Highest CLV' },
   { value: 'recency', label: 'Longest absent' },
@@ -117,7 +118,7 @@ export function AtRiskView({
         if (sortKey === 'churn') return b.churnRisk - a.churnRisk;
         if (sortKey === 'clv') return b.clv - a.clv;
         if (sortKey === 'recency') return b.recency - a.recency;
-        return b.churnRisk * b.clv - a.churnRisk * a.clv;
+        return customerExposure(b) - customerExposure(a);
       });
   }, [customers, query, sortKey, tier]);
 
@@ -136,6 +137,7 @@ export function AtRiskView({
       'Customer ID',
       'Churn risk (%)',
       'Predicted CLV (GBP)',
+      'Exposure (GBP)',
       'Recency (days)',
       'Frequency (orders)',
       'Risk tier',
@@ -145,6 +147,7 @@ export function AtRiskView({
       customer.id,
       (customer.churnRisk * 100).toFixed(1),
       customer.clv.toFixed(2),
+      customerExposure(customer).toFixed(2),
       customer.recency,
       customer.freq,
       riskTierLabel(riskTier(customer.churnRisk)),
@@ -372,7 +375,7 @@ export function AtRiskView({
           ) : (
             <>
               <div className="scrollbar-thin hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[680px] text-sm">
+                <table className="w-full min-w-[780px] text-sm">
                   <thead>
                     <tr className="border-b border-border/70 text-left">
                       <th scope="col" className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:px-5">
@@ -383,6 +386,9 @@ export function AtRiskView({
                       </th>
                       <th scope="col" className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Predicted CLV
+                      </th>
+                      <th scope="col" className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Exposure
                       </th>
                       <th scope="col" className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Recency
@@ -431,6 +437,14 @@ export function AtRiskView({
                         <td className="px-3 py-3 text-right font-medium tabular-nums">
                           {formatCurrency(customer.clv)}
                         </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          <span
+                            title="Predicted CLV multiplied by churn probability"
+                            className="font-medium"
+                          >
+                            {formatCurrency(customerExposure(customer))}
+                          </span>
+                        </td>
                         <td className="px-3 py-3 text-right tabular-nums">{customer.recency}d</td>
                         <td className="px-3 py-3 text-right tabular-nums">{customer.freq}</td>
                         <td className="px-4 py-3 text-right sm:px-5">
@@ -466,7 +480,7 @@ export function AtRiskView({
                         label={riskTierLabel(riskTier(customer.churnRisk))}
                       />
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="grid grid-cols-2 gap-2 text-center">
                       <div className="rounded-lg border border-border/70 p-2">
                         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Risk</p>
                         <p className="text-sm font-semibold tabular-nums">
@@ -477,6 +491,14 @@ export function AtRiskView({
                         <p className="text-[10px] uppercase tracking-wide text-muted-foreground">CLV</p>
                         <p className="text-sm font-semibold tabular-nums">
                           {formatCurrency(customer.clv)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border/70 p-2">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Exposure
+                        </p>
+                        <p className="text-sm font-semibold tabular-nums">
+                          {formatCurrency(customerExposure(customer))}
                         </p>
                       </div>
                       <div className="rounded-lg border border-border/70 p-2">

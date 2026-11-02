@@ -27,12 +27,14 @@ export function riskTierLabel(tier: RiskTier): string {
   return 'Watchlist';
 }
 
+/** CLV exposure for a single account, weighted by churn probability. */
+export function customerExposure(customer: AtRiskCustomer): number {
+  return customer.clv * Math.min(1, Math.max(0, customer.churnRisk));
+}
+
 /** CLV exposure weighted by each account's churn probability. */
 export function revenueAtRisk(customers: AtRiskCustomer[]): number {
-  return customers.reduce(
-    (total, customer) => total + customer.clv * Math.min(1, Math.max(0, customer.churnRisk)),
-    0,
-  );
+  return customers.reduce((total, customer) => total + customerExposure(customer), 0);
 }
 
 export function averageChurn(customers: AtRiskCustomer[]): number {
@@ -49,6 +51,32 @@ export function weightedAverageClv(summary: SegmentSummary[]): number {
   if (population === 0) return 0;
   const weighted = summary.reduce((total, segment) => total + segment.avg_clv * segment.count, 0);
   return weighted / population;
+}
+
+export interface RfmBenchmark {
+  recency: number;
+  frequency: number;
+  monetary: number;
+}
+
+/** Population-weighted RFM averages across every segment. */
+export function weightedSegmentBenchmark(summary: SegmentSummary[]): RfmBenchmark {
+  const population = totalSegmentCustomers(summary);
+  if (population === 0) {
+    return { recency: 0, frequency: 0, monetary: 0 };
+  }
+
+  return summary.reduce<RfmBenchmark>(
+    (benchmark, segment) => {
+      const weight = segment.count / population;
+      return {
+        recency: benchmark.recency + segment.avg_recency * weight,
+        frequency: benchmark.frequency + segment.avg_frequency * weight,
+        monetary: benchmark.monetary + segment.avg_monetary * weight,
+      };
+    },
+    { recency: 0, frequency: 0, monetary: 0 },
+  );
 }
 
 export function monthOverMonthChange(series: { revenue: number }[]): number | null {

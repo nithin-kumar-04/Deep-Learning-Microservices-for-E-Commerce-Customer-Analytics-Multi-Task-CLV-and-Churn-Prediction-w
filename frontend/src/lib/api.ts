@@ -149,15 +149,6 @@ export const getHealth = async (): Promise<HealthStatus> => {
   return response.data;
 };
 
-export const checkHealth = async (): Promise<boolean> => {
-  try {
-    const response = await apiClient.get('/health');
-    return response.status === 200;
-  } catch {
-    return false;
-  }
-};
-
 export const getSegments = async (): Promise<SegmentsResponse> => {
   const response = await apiClient.get('/segments');
   return response.data;
