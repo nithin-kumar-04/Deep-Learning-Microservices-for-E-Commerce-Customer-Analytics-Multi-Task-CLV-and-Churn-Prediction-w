@@ -285,16 +285,24 @@ test('lands on the Velora home page and returns home from the brand', async ({ p
   await expect(page.getByRole('heading', { name: /Know who to keep/ })).toBeVisible();
 });
 
-test('collapses and expands the desktop sidebar', async ({ page }) => {
+test('collapses and expands the desktop sidebar from the brand row', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Close sidebar' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Close sidebar' }).click();
-  await expect(page.getByRole('button', { name: 'Open sidebar' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close sidebar', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Open sidebar', exact: true })).toBeVisible();
   // Icon-only navigation keeps accessible names.
   await expect(page.getByRole('button', { name: 'Home', exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Open sidebar' }).click();
-  await expect(page.getByRole('button', { name: 'Close sidebar' })).toBeVisible();
+  // While collapsed, the V logo expands the rail instead of navigating home.
+  await page.getByRole('button', { name: 'Expand sidebar from Velora logo' }).click();
+  await expect(page.getByRole('button', { name: 'Close sidebar', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Revenue that stays ahead of churn' }),
+  ).toBeVisible();
+
+  // Once the sidebar is open, the V logo goes home.
+  await page.getByRole('button', { name: 'Go to Velora home' }).first().click();
+  await expect(page.getByRole('heading', { name: /Know who to keep/ })).toBeVisible();
 });
 
 test('navigates with the command palette keyboard shortcut', async ({ page }) => {

@@ -227,27 +227,49 @@ function SidebarContent({
   onNavigate,
   onSelect,
   collapsed,
+  onToggleCollapsed,
 }: {
   activeView: ViewId;
   health: ApiHealth;
   onNavigate: (view: ViewId) => void;
   onSelect?: () => void;
   collapsed: boolean;
+  onToggleCollapsed: () => void;
 }) {
   return (
     <>
-      <button
-        type="button"
-        onClick={() => onNavigate('home')}
+      <div
         className={cn(
-          'flex items-center gap-2.5 px-4 py-5 text-left',
-          collapsed && 'justify-center px-0',
+          'flex items-center gap-2 py-5',
+          collapsed ? 'justify-center px-2' : 'px-3',
         )}
-        aria-label="Go to Velora home"
       >
-        <BrandMark />
-        {!collapsed ? <Wordmark /> : null}
-      </button>
+        <button
+          type="button"
+          onClick={() => (collapsed ? onToggleCollapsed() : onNavigate('home'))}
+          className="flex min-w-0 items-center gap-2.5 text-left"
+          aria-label={collapsed ? 'Expand sidebar from Velora logo' : 'Go to Velora home'}
+          title={collapsed ? 'Expand sidebar' : 'Velora home'}
+        >
+          <BrandMark />
+          {!collapsed ? <Wordmark /> : null}
+        </button>
+
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onToggleCollapsed}
+          aria-label={collapsed ? 'Open sidebar' : 'Close sidebar'}
+          title={collapsed ? 'Open sidebar' : 'Close sidebar'}
+          className={cn('shrink-0', !collapsed && 'ml-auto')}
+        >
+          {collapsed ? (
+            <PanelLeftOpen className="size-4" />
+          ) : (
+            <PanelLeftClose className="size-4" />
+          )}
+        </Button>
+      </div>
       <div className={cn('scrollbar-thin flex-1 overflow-y-auto pb-4', collapsed ? 'px-2' : 'px-3')}>
         <NavList
           activeView={activeView}
@@ -472,7 +494,7 @@ export function AppShell({ activeView, onNavigate, health, children }: AppShellP
       <aside
         className={cn(
           'fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-border/70 bg-sidebar/80 backdrop-blur-xl transition-[width] duration-200 ease-out lg:flex',
-          sidebarCollapsed ? 'w-[76px]' : 'w-64',
+          sidebarCollapsed ? 'w-[88px]' : 'w-64',
         )}
       >
         <SidebarContent
@@ -480,6 +502,7 @@ export function AppShell({ activeView, onNavigate, health, children }: AppShellP
           health={health}
           onNavigate={navigate}
           collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
         />
       </aside>
 
@@ -533,7 +556,7 @@ export function AppShell({ activeView, onNavigate, health, children }: AppShellP
       <div
         className={cn(
           'transition-[padding] duration-200 ease-out',
-          sidebarCollapsed ? 'lg:pl-[76px]' : 'lg:pl-64',
+          sidebarCollapsed ? 'lg:pl-[88px]' : 'lg:pl-64',
         )}
       >
         <header className="sticky top-0 z-30 border-b border-border/70 bg-background/80 backdrop-blur-xl">
@@ -546,21 +569,6 @@ export function AppShell({ activeView, onNavigate, health, children }: AppShellP
               aria-label="Open navigation"
             >
               <Menu className="size-4" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="hidden lg:inline-flex"
-              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
-              aria-label={sidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
-              title={sidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
-            >
-              {sidebarCollapsed ? (
-                <PanelLeftOpen className="size-4" />
-              ) : (
-                <PanelLeftClose className="size-4" />
-              )}
             </Button>
 
             <div className="hidden min-w-0 items-center gap-1.5 text-xs sm:flex">
