@@ -1,5 +1,6 @@
 import {
   FileText,
+  Home,
   LayoutDashboard,
   Sparkles,
   Users,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 
 export type ViewId =
+  | 'home'
   | 'overview'
   | 'simulator'
   | 'segments'
@@ -27,6 +29,13 @@ export interface ViewMeta {
 }
 
 export const VIEWS: ViewMeta[] = [
+  {
+    id: 'home',
+    label: 'Home',
+    description: 'Welcome to Velora and pick a workspace',
+    icon: Home,
+    group: 'Analyse',
+  },
   {
     id: 'overview',
     label: 'Overview',

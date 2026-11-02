@@ -9,6 +9,8 @@ import {
   Command,
   Database,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   X,
 } from 'lucide-react';
@@ -16,7 +18,13 @@ import {
 import { BrandMark, Wordmark } from '@/components/dashboard/logo';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
-import { NAV_GROUPS, VIEWS, getViewMeta, type ViewId } from '@/lib/navigation';
+import {
+  NAV_GROUPS,
+  VIEWS,
+  getViewMeta,
+  type ViewId,
+  type ViewMeta,
+} from '@/lib/navigation';
 import { cn } from '@/lib/utils';
 
 export interface ApiHealth {
@@ -48,72 +56,119 @@ function HealthDot({ status, className }: { status: ApiHealth['status']; classNa
   );
 }
 
+function NavItem({
+  view,
+  active,
+  collapsed,
+  onNavigate,
+  onSelect,
+}: {
+  view: ViewMeta;
+  active: boolean;
+  collapsed: boolean;
+  onNavigate: (view: ViewId) => void;
+  onSelect?: () => void;
+}) {
+  const Icon = view.icon;
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => {
+          onNavigate(view.id);
+          onSelect?.();
+        }}
+        aria-current={active ? 'page' : undefined}
+        aria-label={collapsed ? view.label : undefined}
+        title={collapsed ? view.label : undefined}
+        className={cn(
+          'group relative flex w-full items-center rounded-xl text-sm transition-colors',
+          collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5 text-left',
+          active
+            ? 'bg-primary/10 text-foreground'
+            : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+        )}
+      >
+        {active ? (
+          <span
+            className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary"
+            aria-hidden="true"
+          />
+        ) : null}
+        <Icon
+          className={cn(
+            'size-4 shrink-0 transition-colors',
+            active ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground',
+          )}
+          aria-hidden="true"
+        />
+        {!collapsed ? (
+          <>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium">{view.label}</span>
+            </span>
+            <ChevronRight
+              className={cn(
+                'size-3.5 shrink-0 transition-all',
+                active
+                  ? 'translate-x-0 text-primary opacity-100'
+                  : '-translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-60',
+              )}
+              aria-hidden="true"
+            />
+          </>
+        ) : null}
+      </button>
+    </li>
+  );
+}
+
 function NavList({
   activeView,
   onNavigate,
   onSelect,
+  collapsed = false,
 }: {
   activeView: ViewId;
   onNavigate: (view: ViewId) => void;
   onSelect?: () => void;
+  collapsed?: boolean;
 }) {
+  const home = getViewMeta('home');
+
   return (
-    <nav aria-label="Primary" className="space-y-6">
+    <nav aria-label="Primary" className="space-y-5">
+      <ul className="space-y-0.5">
+        <NavItem
+          view={home}
+          active={activeView === 'home'}
+          collapsed={collapsed}
+          onNavigate={onNavigate}
+          onSelect={onSelect}
+        />
+      </ul>
+
       {NAV_GROUPS.map((group) => (
         <div key={group}>
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
-            {group}
-          </p>
-          <ul className="mt-2 space-y-0.5">
-            {VIEWS.filter((view) => view.group === group).map((view) => {
-              const active = view.id === activeView;
-              const Icon = view.icon;
-
-              return (
-                <li key={view.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onNavigate(view.id);
-                      onSelect?.();
-                    }}
-                    aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors',
-                      active
-                        ? 'bg-primary/10 text-foreground'
-                        : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-                    )}
-                  >
-                    {active ? (
-                      <span
-                        className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary"
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                    <Icon
-                      className={cn(
-                        'size-4 shrink-0 transition-colors',
-                        active ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground',
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{view.label}</span>
-                    </span>
-                    <ChevronRight
-                      className={cn(
-                        'size-3.5 shrink-0 transition-all',
-                        active
-                          ? 'translate-x-0 text-primary opacity-100'
-                          : '-translate-x-1 opacity-0 group-hover:translate-x-0 group-hover:opacity-60',
-                      )}
-                      aria-hidden="true"
-                    />
-                  </button>
-                </li>
-              );
-            })}
+          {collapsed ? (
+            <div className="mx-auto mb-1.5 h-px w-6 bg-border" aria-hidden="true" />
+          ) : (
+            <p className="px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
+              {group}
+            </p>
+          )}
+          <ul className={cn('space-y-0.5', !collapsed && 'mt-2')}>
+            {VIEWS.filter((view) => view.group === group && view.id !== 'home').map((view) => (
+              <NavItem
+                key={view.id}
+                view={view}
+                active={view.id === activeView}
+                collapsed={collapsed}
+                onNavigate={onNavigate}
+                onSelect={onSelect}
+              />
+            ))}
           </ul>
         </div>
       ))}
@@ -171,26 +226,50 @@ function SidebarContent({
   health,
   onNavigate,
   onSelect,
+  collapsed,
 }: {
   activeView: ViewId;
   health: ApiHealth;
   onNavigate: (view: ViewId) => void;
   onSelect?: () => void;
+  collapsed: boolean;
 }) {
   return (
     <>
-      <div className="flex items-center gap-2.5 px-4 py-5">
+      <button
+        type="button"
+        onClick={() => onNavigate('home')}
+        className={cn(
+          'flex items-center gap-2.5 px-4 py-5 text-left',
+          collapsed && 'justify-center px-0',
+        )}
+        aria-label="Go to Velora home"
+      >
         <BrandMark />
-        <Wordmark />
+        {!collapsed ? <Wordmark /> : null}
+      </button>
+      <div className={cn('scrollbar-thin flex-1 overflow-y-auto pb-4', collapsed ? 'px-2' : 'px-3')}>
+        <NavList
+          activeView={activeView}
+          onNavigate={onNavigate}
+          onSelect={onSelect}
+          collapsed={collapsed}
+        />
       </div>
-      <div className="scrollbar-thin flex-1 overflow-y-auto px-3 pb-4">
-        <NavList activeView={activeView} onNavigate={onNavigate} onSelect={onSelect} />
-      </div>
-      <div className="border-t border-border/70 px-3 py-3">
-        <SidebarFooter health={health} />
-        <p className="mt-3 px-1 text-[10px] font-medium tracking-wide text-muted-foreground/70">
-          Velora · Customer intelligence
-        </p>
+      <div className={cn('border-t border-border/70 py-3', collapsed ? 'px-2' : 'px-3')}>
+        {collapsed ? (
+          <div className="flex justify-center" title={`API ${health.status}`}>
+            <HealthDot status={health.status} />
+            <span className="sr-only">API status: {health.status}</span>
+          </div>
+        ) : (
+          <>
+            <SidebarFooter health={health} />
+            <p className="mt-3 px-1 text-[10px] font-medium tracking-wide text-muted-foreground/70">
+              Velora · Customer intelligence
+            </p>
+          </>
+        )}
       </div>
     </>
   );
@@ -345,6 +424,7 @@ function CommandPalette({
 export function AppShell({ activeView, onNavigate, health, children }: AppShellProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const meta = getViewMeta(activeView);
 
   useEffect(() => {
@@ -389,8 +469,18 @@ export function AppShell({ activeView, onNavigate, health, children }: AppShellP
       </div>
 
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-border/70 bg-sidebar/80 backdrop-blur-xl lg:flex">
-        <SidebarContent activeView={activeView} health={health} onNavigate={navigate} />
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-border/70 bg-sidebar/80 backdrop-blur-xl transition-[width] duration-200 ease-out lg:flex',
+          sidebarCollapsed ? 'w-[76px]' : 'w-64',
+        )}
+      >
+        <SidebarContent
+          activeView={activeView}
+          health={health}
+          onNavigate={navigate}
+          collapsed={sidebarCollapsed}
+        />
       </aside>
 
       {/* Mobile drawer */}
@@ -408,10 +498,15 @@ export function AppShell({ activeView, onNavigate, health, children }: AppShellP
             className="animate-rise absolute inset-y-0 left-0 flex w-[86%] max-w-xs flex-col border-r border-border bg-sidebar shadow-2xl"
           >
             <div className="flex items-center justify-between px-4 py-5">
-              <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => navigate('home')}
+                className="flex items-center gap-2.5 text-left"
+                aria-label="Go to Velora home"
+              >
                 <BrandMark />
                 <Wordmark />
-              </div>
+              </button>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -435,7 +530,12 @@ export function AppShell({ activeView, onNavigate, health, children }: AppShellP
         </div>
       ) : null}
 
-      <div className="lg:pl-64">
+      <div
+        className={cn(
+          'transition-[padding] duration-200 ease-out',
+          sidebarCollapsed ? 'lg:pl-[76px]' : 'lg:pl-64',
+        )}
+      >
         <header className="sticky top-0 z-30 border-b border-border/70 bg-background/80 backdrop-blur-xl">
           <div className="flex h-14 items-center gap-2 px-3 sm:px-5 lg:px-8">
             <Button
@@ -448,8 +548,30 @@ export function AppShell({ activeView, onNavigate, health, children }: AppShellP
               <Menu className="size-4" />
             </Button>
 
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="hidden lg:inline-flex"
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+              aria-label={sidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
+              title={sidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen className="size-4" />
+              ) : (
+                <PanelLeftClose className="size-4" />
+              )}
+            </Button>
+
             <div className="hidden min-w-0 items-center gap-1.5 text-xs sm:flex">
-              <span className="font-semibold tracking-tight">Velora</span>
+              <button
+                type="button"
+                onClick={() => navigate('home')}
+                aria-label="Go to Velora home"
+                className="rounded font-semibold tracking-tight transition-colors hover:text-primary"
+              >
+                Velora
+              </button>
               <ChevronRight className="size-3 text-muted-foreground/60" aria-hidden="true" />
               <span className="truncate text-muted-foreground">{meta.label}</span>
             </div>

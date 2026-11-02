@@ -233,7 +233,7 @@ async function mockApi(page: Page, options: MockOptions = {}) {
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page);
-  await page.goto('/');
+  await page.goto('/#/overview');
 });
 
 test('renders the app shell, navigation and live health status', async ({ page }) => {
@@ -243,7 +243,7 @@ test('renders the app shell, navigation and live health status', async ({ page }
   await expect(page.getByText('API online')).toBeVisible();
   await expect(page.getByText(/Model service v1\.1\.0/)).toBeVisible();
 
-  for (const label of ['Overview', 'Simulator', 'Segments', 'Products', 'Reports', 'At-Risk', 'Batch']) {
+  for (const label of ['Home', 'Overview', 'Simulator', 'Segments', 'Products', 'Reports', 'At-Risk', 'Batch']) {
     await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
   }
 
@@ -263,6 +263,38 @@ test('opens reports and exports a segment CSV', async ({ page }) => {
   await page.getByRole('button', { name: 'Export Segment breakdown' }).click();
   expect((await downloadPromise).suggestedFilename()).toBe('velora-segments.csv');
   await expect(page.getByText('Segment report exported')).toBeVisible();
+});
+
+test('lands on the Velora home page and returns home from the brand', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: /Know who to keep/ })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Open dashboard' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Revenue that stays ahead of churn' }),
+  ).toBeVisible();
+
+  await page.getByRole('button', { name: 'Go to Velora home' }).first().click();
+  await expect(page.getByRole('heading', { name: /Know who to keep/ })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Revenue that stays ahead of churn' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+  await expect(page.getByRole('heading', { name: /Know who to keep/ })).toBeVisible();
+});
+
+test('collapses and expands the desktop sidebar', async ({ page }) => {
+  await expect(page.getByRole('button', { name: 'Close sidebar' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Close sidebar' }).click();
+  await expect(page.getByRole('button', { name: 'Open sidebar' })).toBeVisible();
+  // Icon-only navigation keeps accessible names.
+  await expect(page.getByRole('button', { name: 'Home', exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Open sidebar' }).click();
+  await expect(page.getByRole('button', { name: 'Close sidebar' })).toBeVisible();
 });
 
 test('navigates with the command palette keyboard shortcut', async ({ page }) => {

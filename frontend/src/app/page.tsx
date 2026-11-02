@@ -5,6 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { AppShell, type ApiHealth } from '@/components/dashboard/app-shell';
 import { AtRiskView } from '@/components/dashboard/views/at-risk-view';
 import { BatchView } from '@/components/dashboard/views/batch-view';
+import { HomeView } from '@/components/dashboard/views/home-view';
 import { OverviewView } from '@/components/dashboard/views/overview-view';
 import { ProductsView } from '@/components/dashboard/views/products-view';
 import { ReportsView } from '@/components/dashboard/views/reports-view';
@@ -41,7 +42,8 @@ function getServerHashSnapshot() {
 
 function viewFromHash(hash: string): ViewId {
   const value = hash.replace(/^#\/?/, '').split('?')[0];
-  return isViewId(value) ? value : 'overview';
+  if (!value) return 'home';
+  return isViewId(value) ? value : 'home';
 }
 
 export default function Dashboard() {
@@ -96,6 +98,7 @@ export default function Dashboard() {
 
   return (
     <AppShell activeView={activeView} onNavigate={navigate} health={health}>
+      {activeView === 'home' ? <HomeView onNavigate={navigate} /> : null}
       {activeView === 'overview' ? <OverviewView onNavigate={navigate} /> : null}
       {activeView === 'simulator' ? (
         <SimulatorView
