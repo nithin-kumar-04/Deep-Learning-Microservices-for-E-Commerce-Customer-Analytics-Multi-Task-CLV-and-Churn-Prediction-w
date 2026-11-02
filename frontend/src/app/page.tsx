@@ -7,6 +7,7 @@ import { AtRiskView } from '@/components/dashboard/views/at-risk-view';
 import { BatchView } from '@/components/dashboard/views/batch-view';
 import { OverviewView } from '@/components/dashboard/views/overview-view';
 import { ProductsView } from '@/components/dashboard/views/products-view';
+import { ReportsView } from '@/components/dashboard/views/reports-view';
 import { SegmentsView } from '@/components/dashboard/views/segments-view';
 import { SimulatorView } from '@/components/dashboard/views/simulator-view';
 import { getHealth } from '@/lib/api';
@@ -105,6 +106,7 @@ export default function Dashboard() {
       ) : null}
       {activeView === 'segments' ? <SegmentsView onNavigate={navigate} /> : null}
       {activeView === 'products' ? <ProductsView onNavigate={navigate} /> : null}
+      {activeView === 'reports' ? <ReportsView onNavigate={navigate} /> : null}
       {activeView === 'at-risk' ? (
         <AtRiskView onNavigate={navigate} onSimulate={simulateCustomer} />
       ) : null}

@@ -1,4 +1,5 @@
 import {
+  FileText,
   LayoutDashboard,
   Sparkles,
   Users,
@@ -8,7 +9,14 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-export type ViewId = 'overview' | 'simulator' | 'segments' | 'products' | 'batch' | 'at-risk';
+export type ViewId =
+  | 'overview'
+  | 'simulator'
+  | 'segments'
+  | 'products'
+  | 'reports'
+  | 'batch'
+  | 'at-risk';
 
 export interface ViewMeta {
   id: ViewId;
@@ -45,6 +53,13 @@ export const VIEWS: ViewMeta[] = [
     label: 'Products',
     description: 'Top sellers and revenue concentration',
     icon: Package,
+    group: 'Analyse',
+  },
+  {
+    id: 'reports',
+    label: 'Reports',
+    description: 'Export portfolio snapshots as CSV',
+    icon: FileText,
     group: 'Analyse',
   },
   {

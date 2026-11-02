@@ -243,7 +243,7 @@ test('renders the app shell, navigation and live health status', async ({ page }
   await expect(page.getByText('API online')).toBeVisible();
   await expect(page.getByText(/Model service v1\.1\.0/)).toBeVisible();
 
-  for (const label of ['Overview', 'Simulator', 'Segments', 'Products', 'At-Risk', 'Batch']) {
+  for (const label of ['Overview', 'Simulator', 'Segments', 'Products', 'Reports', 'At-Risk', 'Batch']) {
     await expect(page.getByRole('button', { name: label, exact: true })).toBeVisible();
   }
 
@@ -253,7 +253,23 @@ test('renders the app shell, navigation and live health status', async ({ page }
   await expect(page.getByText('Segment pulse')).toBeVisible();
 });
 
+test('opens reports and exports a segment CSV', async ({ page }) => {
+  await page.getByRole('button', { name: 'Reports', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Reports' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Segment breakdown' })).toBeVisible();
+  await expect(page.getByText('velora-segments.csv')).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export Segment breakdown' }).click();
+  expect((await downloadPromise).suggestedFilename()).toBe('velora-segments.csv');
+  await expect(page.getByText('Segment report exported')).toBeVisible();
+});
+
 test('navigates with the command palette keyboard shortcut', async ({ page }) => {
+  // Wait for the health request to resolve so React has hydrated and the
+  // global keydown listener is attached before pressing the shortcut.
+  await expect(page.getByText('API online')).toBeVisible();
+
   await page.keyboard.press('Control+K');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await expect(palette).toBeVisible();
